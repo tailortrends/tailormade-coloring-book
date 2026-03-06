@@ -5,6 +5,9 @@ import firebase_admin
 from firebase_admin import credentials
 import structlog
 import logging
+import os
+import json
+import tempfile
 
 structlog.configure(
     processors=[
@@ -34,7 +37,17 @@ async def lifespan(app: FastAPI):
     # Firebase init
     try:
         if not firebase_admin._apps:
-            cred = credentials.Certificate(settings.firebase_service_account_path)
+            # Try env var first (production), fall back to file path (local development)
+            firebase_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+            if firebase_json:
+                tmp = tempfile.NamedTemporaryFile(
+                    mode='w', suffix='.json', delete=False
+                )
+                tmp.write(firebase_json)
+                tmp.flush()
+                cred = credentials.Certificate(tmp.name)
+            else:
+                cred = credentials.Certificate(settings.firebase_service_account_path)
             firebase_admin.initialize_app(cred)
         logger.info("firebase_initialized")
     except FileNotFoundError:
