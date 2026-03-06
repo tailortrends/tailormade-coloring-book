@@ -1,0 +1,171 @@
+{
+  "theme": "animals",
+  "display_name": "Animals",
+  "emoji": "🐾",
+  "total_subjects": 20,
+  "complexity_tiers": ["simple", "beginner", "medium", "advanced"],
+  "variations_per_slot": 3,
+  "total_images": 240,
+  "subjects": [
+    {"subject_id": "animals_dog", "name": "Dog", "tags": ["puppy", "domestic", "pet", "loyal"], "age_appeal": ["simple","beginner","medium","advanced"], "popularity_rank": 1,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large friendly dog sitting, centered on white background, NO background details, suitable for toddlers ages 2-4, clean simple shape",
+        "beginner": "children's coloring book page, thick bold black outlines, cute dog with wagging tail, simple grass background, suitable for ages 4-6, easy to color",
+        "medium": "children's coloring book page, medium weight black outlines, playful dog in a park scene with ball and trees, suitable for ages 6-9, fun details",
+        "advanced": "children's coloring book page, fine detailed black outlines, dog playing fetch in richly detailed park scene, foreground midground background, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_cat", "name": "Cat", "tags": ["kitten", "domestic", "pet", "curious"], "age_appeal": ["simple","beginner","medium","advanced"], "popularity_rank": 2,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large fluffy cat sitting, centered on white background, NO background details, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, cute cat playing with yarn ball, simple floor background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, cat in a cozy living room scene with cushions and window, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, cat exploring a garden scene with flowers and butterflies, richly detailed, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_elephant", "name": "Elephant", "tags": ["safari", "big", "trunk", "jungle"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 3,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large baby elephant, centered on white background, NO background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, elephant spraying water with trunk, simple watering hole, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, elephant family in savanna scene with acacia trees, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, elephant in detailed African savanna with wildlife and sunset, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_lion", "name": "Lion", "tags": ["safari", "mane", "roar", "king"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 4,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, simple friendly lion face, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, cute lion cub sitting proudly, simple grass background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, lion with full mane resting on rock in savanna, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, majestic lion in detailed African landscape with pride, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_rabbit", "name": "Rabbit", "tags": ["bunny", "soft", "ears", "garden"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 5,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large fluffy bunny, centered on white background, NO background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, bunny hopping through simple flower garden, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, rabbit family in meadow scene with burrow and flowers, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, rabbits in detailed English garden with vegetables and cottage, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_owl", "name": "Owl", "tags": ["nocturnal", "wise", "feathers", "tree"], "age_appeal": ["medium","advanced"], "popularity_rank": 6,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large round owl, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, cute owl sitting on branch, simple moon and stars, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, owl on tree branch at night with moon and forest, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, owl in detailed forest nightscape with stars and woodland creatures, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_fox", "name": "Fox", "tags": ["forest", "clever", "orange", "bushy tail"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 7,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large friendly fox, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, cute fox with bushy tail in simple autumn leaves, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, fox exploring forest scene with mushrooms and leaves, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, fox in detailed autumn woodland scene with intricate leaf patterns, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_bear", "name": "Bear", "tags": ["forest", "honey", "big", "cuddly"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 8,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large friendly bear, centered on white background, NO background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, bear cub eating honey from beehive, simple forest background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, bear family at river catching fish, mountain forest scene, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, bears in detailed wilderness landscape with salmon river and pine forest, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_penguin", "name": "Penguin", "tags": ["arctic", "waddle", "fish", "ice"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 9,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large cute penguin, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, penguin chick sliding on ice, simple snow background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, penguin family on iceberg with ocean, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, penguin colony on Antarctic ice shelf with aurora borealis, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_giraffe", "name": "Giraffe", "tags": ["safari", "tall", "spots", "neck"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 10,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large giraffe head and neck, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, baby giraffe eating from tree, simple savanna background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, giraffe in savanna scene with acacia trees and birds, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, giraffe herd in detailed African landscape with sunset and varied wildlife, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_horse", "name": "Horse", "tags": ["mane", "gallop", "stable", "farm"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 11,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large friendly horse head, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, horse trotting in field, simple fence background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, horse galloping in meadow with flowers and hills, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, horse with flowing mane in detailed countryside scene with stable and rolling hills, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_butterfly", "name": "Butterfly", "tags": ["wings", "garden", "colorful", "flower"], "age_appeal": ["simple","beginner","medium","advanced"], "popularity_rank": 12,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large butterfly with simple wing pattern, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, butterfly landing on flower, simple garden background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, butterflies in garden scene with multiple flowers and plants, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, butterfly with intricate wing patterns in detailed botanical garden, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_dolphin", "name": "Dolphin", "tags": ["ocean", "jump", "playful", "waves"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 13,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large dolphin jumping, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, dolphin leaping over waves, simple ocean background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, dolphins playing in ocean waves with boat, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, dolphin pod in detailed ocean scene with coral reef visible below, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_turtle", "name": "Turtle", "tags": ["shell", "slow", "ocean", "garden"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 14,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large friendly turtle, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, turtle walking on beach, simple sand and waves, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, sea turtle swimming in ocean with fish, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, sea turtle in detailed coral reef scene with tropical fish and sea plants, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_monkey", "name": "Monkey", "tags": ["jungle", "swing", "banana", "playful"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 15,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large cute monkey face, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, monkey swinging on vine with banana, simple jungle background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, monkey family in jungle tree canopy scene, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, monkeys in detailed tropical rainforest with exotic birds and lush vegetation, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_zebra", "name": "Zebra", "tags": ["stripes", "safari", "grassland"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 16,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large zebra with simple stripes, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, zebra standing in simple grassland, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, zebra herd on savanna with acacia trees, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, zebras at watering hole in detailed African landscape with other wildlife, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_koala", "name": "Koala", "tags": ["eucalyptus", "climb", "Australia", "sleepy"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 17,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large fluffy koala clinging to branch, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, koala with baby joey on eucalyptus branch, simple background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, koala in eucalyptus tree scene with Australian animals, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, koala in detailed Australian bushland with multiple eucalyptus trees and wildlife, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_deer", "name": "Deer", "tags": ["forest", "antlers", "fawn", "gentle"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 18,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large baby fawn, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, baby deer in simple forest clearing, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, deer family in woodland scene with trees and flowers, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, deer in detailed misty forest scene with intricate foliage and mushrooms, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_hedgehog", "name": "Hedgehog", "tags": ["spines", "cute", "forest", "curl"], "age_appeal": ["simple","beginner","medium"], "popularity_rank": 19,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large cute hedgehog, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, hedgehog sniffing mushroom in simple forest, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, hedgehog family in autumn woodland scene with berries and leaves, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, hedgehog in detailed English hedgerow scene with seasonal plants and insects, suitable for ages 9-12"
+      }
+    },
+    {"subject_id": "animals_parrot", "name": "Parrot", "tags": ["colorful", "tropical", "talk", "perch"], "age_appeal": ["beginner","medium","advanced"], "popularity_rank": 20,
+      "prompts": {
+        "simple": "children's coloring book page, EXTRA THICK bold black outlines, single large parrot on perch, centered on white background, suitable for toddlers ages 2-4",
+        "beginner": "children's coloring book page, thick bold black outlines, colorful parrot on branch, simple tropical background, suitable for ages 4-6",
+        "medium": "children's coloring book page, medium weight black outlines, parrot in tropical tree canopy scene with exotic flowers, suitable for ages 6-9",
+        "advanced": "children's coloring book page, fine detailed black outlines, parrot in detailed tropical rainforest with orchids, ferns and tropical wildlife, suitable for ages 9-12"
+      }
+    }
+  ]
+}

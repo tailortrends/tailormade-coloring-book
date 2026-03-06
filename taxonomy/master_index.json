@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "generated": "2026-03-03",
+  "description": "TailorMade Coloring Book — Complete Image Library Taxonomy",
+  "model_recommendation": "flux-2-lora-gallery/ballpoint-pen-sketch",
+  "fallback_model": "flux-2/lora",
+  "premium_model": "recraft/v4/text-to-vector",
+  "complexity_tiers": {
+    "simple":   { "age_range": "2-4", "ui_label": "Toddler",  "outline": "extra-thick", "objects": "1-2", "background": "none",     "emoji": "🎨" },
+    "beginner": { "age_range": "4-6", "ui_label": "Beginner", "outline": "thick",       "objects": "3-4", "background": "light",    "emoji": "✏️" },
+    "medium":   { "age_range": "6-9", "ui_label": "Kids",     "outline": "standard",    "objects": "5-7", "background": "moderate", "emoji": "🖌️" },
+    "advanced": { "age_range": "9-12","ui_label": "Tweens",   "outline": "fine",        "objects": "8-12","background": "detailed", "emoji": "🎭" }
+  },
+  "themes": [
+    { "theme": "animals",    "emoji": "🐾", "subjects": 20, "images_per_subject": 12, "total_images": 240, "gen_cost_usd": 2.88 },
+    { "theme": "dinosaurs",  "emoji": "🦕", "subjects": 15, "images_per_subject": 12, "total_images": 180, "gen_cost_usd": 2.16 },
+    { "theme": "space",      "emoji": "🚀", "subjects": 15, "images_per_subject": 12, "total_images": 180, "gen_cost_usd": 2.16 },
+    { "theme": "unicorns",   "emoji": "🦄", "subjects": 12, "images_per_subject": 12, "total_images": 144, "gen_cost_usd": 1.73 },
+    { "theme": "princesses", "emoji": "👑", "subjects": 12, "images_per_subject": 12, "total_images": 144, "gen_cost_usd": 1.73 },
+    { "theme": "vehicles",   "emoji": "🚗", "subjects": 15, "images_per_subject": 12, "total_images": 180, "gen_cost_usd": 2.16 },
+    { "theme": "ocean",      "emoji": "🌊", "subjects": 15, "images_per_subject": 12, "total_images": 180, "gen_cost_usd": 2.16 },
+    { "theme": "farm",       "emoji": "🌻", "subjects": 12, "images_per_subject": 12, "total_images": 144, "gen_cost_usd": 1.73 }
+  ],
+  "totals": {
+    "themes": 8,
+    "total_subjects": 116,
+    "tiers_per_subject": 4,
+    "variations_per_tier": 3,
+    "images_per_subject": 12,
+    "total_images": 1392,
+    "already_have": 24,
+    "net_new_to_generate": 1368,
+    "cost_at_0012_per_image": 16.42,
+    "cost_at_0008_per_image": 10.94,
+    "lora_training_cost": 3.00,
+    "total_launch_cost": 19.42
+  },
+  "image_id_format": "{theme}_{subject}_{complexity}_{variant}",
+  "image_id_example": "animals_dog_simple_001",
+  "r2_path_format": "library/{theme}/{complexity}/{image_id}.png",
+  "r2_path_example": "library/animals/simple/animals_dog_simple_001.png",
+  "launch_priority": {
+    "phase_1": ["animals","dinosaurs","space","unicorns"],
+    "phase_2": ["princesses","vehicles","ocean","farm"],
+    "phase_1_cost": 8.93,
+    "phase_2_cost": 7.78
+  }
+}

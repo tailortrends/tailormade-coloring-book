@@ -1,5 +1,22 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { signInWithPopup } from 'firebase/auth'
+import { auth, googleProvider } from '@/firebase'
+
+const router = useRouter()
+const authError = ref<string | null>(null)
+
+async function signInWithGoogle() {
+  authError.value = null
+  try {
+    await signInWithPopup(auth, googleProvider)
+    router.push('/dashboard')
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Sign-in failed'
+    authError.value = message
+  }
+}
 </script>
 
 <template>
@@ -60,7 +77,7 @@ import { RouterLink } from 'vue-router'
 
             <form class="flex flex-col gap-5" @submit.prevent="$router.push('/dashboard')">
               <!-- Google Sign In Button -->
-              <button type="button" class="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 p-3.5 text-slate-700 dark:text-white transition-all hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-slate-100">
+              <button type="button" @click="signInWithGoogle" class="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 p-3.5 text-slate-700 dark:text-white transition-all hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-slate-100">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
@@ -69,6 +86,8 @@ import { RouterLink } from 'vue-router'
                 </svg>
                 <span class="text-sm font-bold">Sign in with Google</span>
               </button>
+
+              <p v-if="authError" class="text-red-500 text-sm text-center font-medium">{{ authError }}</p>
 
               <div class="relative flex items-center gap-2 my-2">
                 <span class="h-px w-full bg-slate-200 dark:bg-slate-600"></span>

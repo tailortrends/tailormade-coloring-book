@@ -61,10 +61,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import auth, books  # noqa: E402
+from app.routers import auth, books, admin  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(books.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

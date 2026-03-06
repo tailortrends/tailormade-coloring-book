@@ -6,10 +6,16 @@ from datetime import datetime
 
 class Scene(BaseModel):
     page_number: int
-    description: str
-    subject_hint: str  # e.g. "dog", "dinosaur_trex"
+    main_subject: str  # The hero element, e.g. "friendly dolphin jumping"
+    secondary_elements: list[str] = []  # 3+ supporting characters/objects
+    background: str = ""  # Environmental details for upper page (mountains, clouds, coral)
+    foreground: str = ""  # Elements for lower page (rocks, grass, shells)
+    subject_hint: str  # e.g. "dolphin", "sea_turtle" — concrete nouns only
     theme: str
     complexity: str  # simple | beginner | medium | advanced
+    caption: str = ""  # child-friendly page title, max 8 words (used internally)
+    composition: str = "full-body"  # close-up | full-body | wide-scene | action-pose
+    is_cover: bool = False  # marks the scene used for cover art
 
 
 class BookRequest(BaseModel):

@@ -1,14 +1,54 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { RouterLink } from 'vue-router'
+import { useBooksStore } from '@/stores/books'
+import type { Book } from '@/types/book'
 
+const store = useBooksStore()
+
+const childName = ref('')
+const ageRange = ref('6-9')
+const theme = ref('animals')
+const pageCount = ref(6)
 const storyPrompt = ref('')
+
+const completedBook = ref<Book | null>(null)
+
+const THEME_MAP: Record<string, string> = {
+  animals: 'animals',
+  dinosaurs: 'dinosaur',
+  unicorns: 'fantasy',
+  space: 'space',
+}
+
+const title = computed(() => {
+  const name = childName.value.trim()
+  const t = theme.value.charAt(0).toUpperCase() + theme.value.slice(1)
+  return name ? `${name}'s ${t} Adventure` : `My ${t} Adventure`
+})
 
 function appendChip(text: string) {
   const base = storyPrompt.value.trimEnd()
   const joined = base ? `${base} ${text}` : text
   storyPrompt.value = joined.slice(0, 300)
+}
+
+async function handleGenerate() {
+  completedBook.value = null
+  try {
+    const book = await store.generateBook({
+      title: title.value,
+      theme: THEME_MAP[theme.value] ?? theme.value,
+      age_range: ageRange.value,
+      page_count: pageCount.value,
+      story_prompt: storyPrompt.value || undefined,
+      character_names: childName.value.trim() ? [childName.value.trim()] : undefined,
+    })
+    completedBook.value = book
+  } catch {
+    // error is already in store.error
+  }
 }
 </script>
 
@@ -40,7 +80,7 @@ function appendChip(text: string) {
               </div>
               <p class="text-primary font-black text-lg">1<span class="text-slate-400 text-sm font-medium">/2</span></p>
             </div>
-            
+
             <div class="relative z-10">
               <div class="flex justify-between text-xs mb-1.5 font-semibold">
                 <span class="text-slate-700 dark:text-slate-300">50% Used</span>
@@ -50,7 +90,7 @@ function appendChip(text: string) {
                 <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500 shadow-[0_0_10px_rgba(139,92,246,0.5)]" style="width: 50%;"></div>
               </div>
             </div>
-            
+
             <div class="mt-4 flex justify-end relative z-10">
               <RouterLink to="/pricing" class="text-primary text-xs font-bold hover:text-primary-dark transition-colors flex items-center gap-1 group/link">
                 Upgrade Plan
@@ -60,10 +100,88 @@ function appendChip(text: string) {
           </div>
         </div>
 
+        <!-- Loading Overlay -->
+        <div v-if="store.loading" class="bg-white dark:bg-slate-900 rounded-[2rem] p-10 md:p-16 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center gap-6 text-center">
+          <div class="relative">
+            <div class="w-20 h-20 rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-primary animate-spin"></div>
+            <span class="material-symbols-outlined text-primary text-3xl absolute inset-0 flex items-center justify-center animate-pulse">auto_stories</span>
+          </div>
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-2">Creating your book...</h2>
+            <p class="text-slate-500 dark:text-slate-400 text-base max-w-md">This takes about 3-5 minutes. Our AI is crafting unique coloring pages just for you. Please don't close this page.</p>
+          </div>
+          <div class="w-full max-w-xs">
+            <div class="rounded-full bg-slate-200 dark:bg-slate-700 h-3 w-full overflow-hidden">
+              <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-1000 animate-pulse" style="width: 60%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success State -->
+        <div v-else-if="completedBook" class="bg-white dark:bg-slate-900 rounded-[2rem] p-10 md:p-16 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-8">
+          <div class="flex flex-col items-center gap-4 text-center">
+            <div class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <span class="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
+            </div>
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-white">Your book is ready!</h2>
+            <p class="text-slate-500 dark:text-slate-400 text-lg">{{ completedBook.title }} — {{ completedBook.page_count }} pages</p>
+          </div>
+
+          <a
+            v-if="completedBook.pdf_url"
+            :href="completedBook.pdf_url"
+            target="_blank"
+            rel="noopener"
+            class="w-full max-w-sm h-16 bg-gradient-to-r from-primary to-accent-purple hover:from-primary-dark hover:to-primary active:scale-95 transition-all rounded-full text-white text-lg font-bold flex items-center justify-center gap-3 shadow-xl shadow-primary/30"
+          >
+            <span class="material-symbols-outlined">download</span>
+            Download Your Book!
+          </a>
+
+          <!-- Page Thumbnails -->
+          <div v-if="completedBook.page_urls.length" class="w-full">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Preview Pages</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div v-for="(url, i) in completedBook.page_urls" :key="i" class="aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                <img :src="url" :alt="`Page ${i + 1}`" class="w-full h-full object-cover" />
+              </div>
+            </div>
+          </div>
+
+          <button
+            @click="completedBook = null; store.resetGeneration(); store.setError(null)"
+            class="text-primary font-bold hover:underline"
+          >
+            Create another book
+          </button>
+        </div>
+
+        <!-- Error State -->
+        <div v-else-if="store.error && store.generationStatus === 'idle'" class="bg-white dark:bg-slate-900 rounded-[2rem] p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-red-200 dark:border-red-900/50 flex flex-col items-center gap-6 text-center">
+          <div class="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+            <span class="material-symbols-outlined text-red-500 text-2xl">error</span>
+          </div>
+          <p class="text-slate-700 dark:text-slate-300 text-lg font-semibold">{{ store.error }}</p>
+          <div class="flex flex-col sm:flex-row items-center gap-3">
+            <button
+              @click="store.setError(null)"
+              class="px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-sm font-bold text-slate-700 dark:text-slate-300 transition-colors"
+            >
+              Try Again
+            </button>
+            <RouterLink
+              to="/pricing"
+              class="px-6 py-3 bg-gradient-to-r from-primary to-accent-purple hover:from-primary-dark hover:to-primary rounded-full text-sm font-bold text-white transition-all shadow-lg shadow-primary/20"
+            >
+              See Plans
+            </RouterLink>
+          </div>
+        </div>
+
         <!-- Form Container -->
-        <div class="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+        <div v-else class="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 relative overflow-hidden">
           <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary via-purple-400 to-accent-pink"></div>
-          
+
           <!-- Child Name & Age -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
             <div class="flex flex-col gap-4">
@@ -73,7 +191,7 @@ function appendChip(text: string) {
                   <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
                     <span class="material-symbols-outlined">face</span>
                   </div>
-                  <input type="text" placeholder="e.g. Leo" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white h-14 pl-12 pr-4 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-slate-400" />
+                  <input v-model="childName" type="text" placeholder="e.g. Leo" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white h-14 pl-12 pr-4 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-slate-400" />
                 </div>
               </label>
             </div>
@@ -82,28 +200,28 @@ function appendChip(text: string) {
               <span class="text-slate-900 dark:text-white text-base font-bold ml-1">Age Range</span>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <label class="cursor-pointer">
-                  <input type="radio" name="age" value="2-4" class="peer sr-only age-toddler" />
+                  <input v-model="ageRange" type="radio" name="age" value="2-4" class="peer sr-only age-toddler" />
                   <div class="h-16 flex flex-col items-center justify-center rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 peer-checked:border-primary peer-checked:text-primary peer-checked:bg-primary/5 hover:border-primary/50 transition-all">
                     <span class="font-bold text-sm leading-tight">2-4</span>
                     <span class="text-[11px] font-medium opacity-70">Toddler</span>
                   </div>
                 </label>
                 <label class="cursor-pointer">
-                  <input type="radio" name="age" value="4-6" class="peer sr-only age-beginner" />
+                  <input v-model="ageRange" type="radio" name="age" value="4-6" class="peer sr-only age-beginner" />
                   <div class="h-16 flex flex-col items-center justify-center rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 peer-checked:border-primary peer-checked:text-primary peer-checked:bg-primary/5 hover:border-primary/50 transition-all">
                     <span class="font-bold text-sm leading-tight">4-6</span>
                     <span class="text-[11px] font-medium opacity-70">Beginner</span>
                   </div>
                 </label>
                 <label class="cursor-pointer">
-                  <input type="radio" name="age" value="6-9" class="peer sr-only age-kids" checked />
+                  <input v-model="ageRange" type="radio" name="age" value="6-9" class="peer sr-only age-kids" />
                   <div class="h-16 flex flex-col items-center justify-center rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 peer-checked:border-primary peer-checked:text-primary peer-checked:bg-primary/5 hover:border-primary/50 transition-all">
                     <span class="font-bold text-sm leading-tight">6-9</span>
                     <span class="text-[11px] font-medium opacity-70">Kids</span>
                   </div>
                 </label>
                 <label class="cursor-pointer">
-                  <input type="radio" name="age" value="9-12" class="peer sr-only age-tweens" />
+                  <input v-model="ageRange" type="radio" name="age" value="9-12" class="peer sr-only age-tweens" />
                   <div class="h-16 flex flex-col items-center justify-center rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 peer-checked:border-primary peer-checked:text-primary peer-checked:bg-primary/5 hover:border-primary/50 transition-all">
                     <span class="font-bold text-sm leading-tight">9-12</span>
                     <span class="text-[11px] font-medium opacity-70">Tweens</span>
@@ -140,10 +258,10 @@ function appendChip(text: string) {
             <div class="flex justify-between items-end mb-4 px-1">
               <h3 class="text-slate-900 dark:text-white text-xl font-bold">Choose a Magical Theme</h3>
             </div>
-            
+
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               <label class="cursor-pointer group relative">
-                <input type="radio" name="theme" class="peer sr-only" checked />
+                <input v-model="theme" type="radio" name="theme" value="animals" class="peer sr-only" />
                 <div class="flex flex-col items-center p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all h-full">
                   <div class="size-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <span class="material-symbols-outlined">pets</span>
@@ -156,7 +274,7 @@ function appendChip(text: string) {
               </label>
 
               <label class="cursor-pointer group relative">
-                <input type="radio" name="theme" class="peer sr-only" />
+                <input v-model="theme" type="radio" name="theme" value="dinosaurs" class="peer sr-only" />
                 <div class="flex flex-col items-center p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all h-full">
                   <div class="size-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <span class="material-symbols-outlined">forest</span>
@@ -169,7 +287,7 @@ function appendChip(text: string) {
               </label>
 
               <label class="cursor-pointer group relative">
-                <input type="radio" name="theme" class="peer sr-only" />
+                <input v-model="theme" type="radio" name="theme" value="unicorns" class="peer sr-only" />
                 <div class="flex flex-col items-center p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all h-full">
                   <div class="size-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <span class="material-symbols-outlined">star</span>
@@ -182,7 +300,7 @@ function appendChip(text: string) {
               </label>
 
               <label class="cursor-pointer group relative">
-                <input type="radio" name="theme" class="peer sr-only" />
+                <input v-model="theme" type="radio" name="theme" value="space" class="peer sr-only" />
                 <div class="flex flex-col items-center p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all h-full">
                   <div class="size-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <span class="material-symbols-outlined">rocket_launch</span>
@@ -195,36 +313,15 @@ function appendChip(text: string) {
               </label>
 
               <label class="cursor-pointer group relative">
-                <input type="radio" name="theme" class="peer sr-only" />
+                <input v-model="theme" type="radio" name="theme" value="nature" class="peer sr-only" />
                 <div class="flex flex-col items-center p-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all h-full">
                   <div class="size-12 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <span class="material-symbols-outlined">add</span>
+                    <span class="material-symbols-outlined">eco</span>
                   </div>
-                  <span class="font-bold text-slate-700 dark:text-slate-200 text-sm">Custom</span>
+                  <span class="font-bold text-slate-700 dark:text-slate-200 text-sm">Nature</span>
                 </div>
                 <div class="absolute top-2 right-2 opacity-0 peer-checked:opacity-100 text-primary transition-opacity">
                   <span class="material-symbols-outlined text-xl">check_circle</span>
-                </div>
-              </label>
-            </div>
-            
-            <div class="mt-4">
-              <label class="cursor-pointer group relative block">
-                <input type="radio" name="theme" class="peer sr-only" />
-                <div class="flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 hover:border-primary/50 peer-checked:border-primary peer-checked:ring-1 peer-checked:ring-primary/20 transition-all">
-                  <div class="size-14 rounded-xl bg-white dark:bg-slate-700 text-primary shadow-sm flex items-center justify-center shrink-0">
-                    <span class="material-symbols-outlined text-3xl">add_a_photo</span>
-                  </div>
-                  <div class="flex flex-col flex-1">
-                    <div class="flex items-center gap-2">
-                       <span class="font-bold text-slate-900 dark:text-white text-base">Import from Photo</span>
-                       <span class="px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold uppercase tracking-wider">New</span>
-                    </div>
-                    <span class="text-sm text-slate-500 dark:text-slate-400">Create a coloring book from your own photos or drawings</span>
-                  </div>
-                  <div class="shrink-0 size-8 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-primary peer-checked:bg-primary text-white flex items-center justify-center transition-colors">
-                    <span class="material-symbols-outlined text-lg opacity-0 peer-checked:opacity-100">check</span>
-                  </div>
                 </div>
               </label>
             </div>
@@ -235,7 +332,7 @@ function appendChip(text: string) {
             <h3 class="text-slate-900 dark:text-white text-xl font-bold mb-4 ml-1">Number of Pages</h3>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label class="cursor-pointer">
-                <input type="radio" name="pages" class="peer sr-only" checked />
+                <input v-model.number="pageCount" type="radio" name="pages" :value="6" class="peer sr-only" />
                 <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 peer-checked:border-primary peer-checked:ring-1 peer-checked:ring-primary peer-checked:bg-white dark:peer-checked:bg-slate-800 transition-all flex items-center gap-3">
                   <div class="size-10 rounded-full bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center font-bold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-600 peer-checked:text-primary peer-checked:border-primary">6</div>
                   <div class="flex flex-col">
@@ -244,9 +341,9 @@ function appendChip(text: string) {
                   </div>
                 </div>
               </label>
-              
+
               <label class="cursor-pointer">
-                <input type="radio" name="pages" class="peer sr-only" />
+                <input v-model.number="pageCount" type="radio" name="pages" :value="10" class="peer sr-only" />
                 <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 peer-checked:border-primary peer-checked:ring-1 peer-checked:ring-primary peer-checked:bg-white dark:peer-checked:bg-slate-800 transition-all flex items-center gap-3">
                   <div class="size-10 rounded-full bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center font-bold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-600 peer-checked:text-primary peer-checked:border-primary">10</div>
                   <div class="flex flex-col">
@@ -255,9 +352,9 @@ function appendChip(text: string) {
                   </div>
                 </div>
               </label>
-              
+
               <label class="cursor-pointer">
-                <input type="radio" name="pages" class="peer sr-only" />
+                <input v-model.number="pageCount" type="radio" name="pages" :value="15" class="peer sr-only" />
                 <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 peer-checked:border-primary peer-checked:ring-1 peer-checked:ring-primary peer-checked:bg-white dark:peer-checked:bg-slate-800 transition-all flex items-center gap-3">
                   <div class="size-10 rounded-full bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center font-bold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-600 peer-checked:text-primary peer-checked:border-primary">15</div>
                   <div class="flex flex-col">
@@ -322,11 +419,15 @@ function appendChip(text: string) {
               <span class="material-symbols-outlined text-lg text-primary">info</span>
               This will use 1 book credit from your quota.
             </div>
-            
-            <RouterLink to="/generating" class="w-full md:w-auto min-w-[240px] h-16 bg-gradient-to-r from-primary to-accent-purple hover:from-primary-dark hover:to-primary active:scale-95 transition-all rounded-full text-white text-lg font-bold flex items-center justify-center gap-3 shadow-xl shadow-primary/30">
+
+            <button
+              @click="handleGenerate"
+              :disabled="store.loading"
+              class="w-full md:w-auto min-w-[240px] h-16 bg-gradient-to-r from-primary to-accent-purple hover:from-primary-dark hover:to-primary active:scale-95 transition-all rounded-full text-white text-lg font-bold flex items-center justify-center gap-3 shadow-xl shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <span class="material-symbols-outlined">magic_button</span>
               <span>Generate Book</span>
-            </RouterLink>
+            </button>
           </div>
         </div>
       </div>

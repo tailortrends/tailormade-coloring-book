@@ -38,3 +38,30 @@ async def get_user_books(uid: str, limit: int = 20) -> list[dict]:
         ),
     )
     return [doc.to_dict() for doc in docs]
+
+
+async def record_generation_cost(cost_data: dict) -> None:
+    """Write a cost record to the 'costs' collection for margin tracking."""
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    doc_id = cost_data.get("book_id", "unknown")
+    await loop.run_in_executor(
+        None, lambda: db.collection("costs").document(doc_id).set(cost_data)
+    )
+    logger.info("cost_recorded", book_id=doc_id, total_cost=cost_data.get("total_cost"))
+
+
+async def get_all_costs(limit: int = 500) -> list[dict]:
+    """Retrieve cost records for admin dashboard."""
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    docs = await loop.run_in_executor(
+        None,
+        lambda: list(
+            db.collection("costs")
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        ),
+    )
+    return [doc.to_dict() for doc in docs]

@@ -8,10 +8,21 @@ export interface Book {
   book_id: string
   title: string
   theme: string
-  status: 'pending' | 'generating' | 'ready' | 'error'
+  age_range: string
+  status: 'generating' | 'complete' | 'failed'
   page_count: number
   pdf_url: string | null
-  pages: BookPage[]
+  page_urls: string[]
+  created_at: string
+}
+
+export interface BookGenerateRequest {
+  title: string
+  theme: string
+  age_range: string
+  page_count: number
+  story_prompt?: string
+  character_names?: string[]
 }
 
 export interface CreateBookParams {
