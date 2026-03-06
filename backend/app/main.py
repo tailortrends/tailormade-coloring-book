@@ -37,23 +37,22 @@ async def lifespan(app: FastAPI):
     # Firebase init
     try:
         if not firebase_admin._apps:
-            # Try env var first (production), fall back to file path (local development)
-            firebase_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-            if firebase_json:
-                tmp = tempfile.NamedTemporaryFile(
-                    mode='w', suffix='.json', delete=False
-                )
-                tmp.write(firebase_json)
-                tmp.flush()
-                cred = credentials.Certificate(tmp.name)
-            else:
-                cred = credentials.Certificate(settings.firebase_service_account_path)
+            cert_val = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+            if not cert_val:
+                cert_val = settings.firebase_service_account_path
+                
+            try:
+                cert_dict = json.loads(cert_val)
+                cred = credentials.Certificate(cert_dict)
+            except json.JSONDecodeError:
+                cred = credentials.Certificate(cert_val)
+                
             firebase_admin.initialize_app(cred)
         logger.info("firebase_initialized")
-    except FileNotFoundError:
+    except Exception as e:
         if settings.is_production:
-            raise RuntimeError("Firebase credentials required in production")
-        logger.warning("firebase_disabled_dev_mode")
+            raise RuntimeError(f"Firebase credentials required in production: {e}")
+        logger.warning(f"firebase_disabled_dev_mode: {e}")
 
     logger.info("tailormade_api_ready", env=settings.app_env)
     yield
