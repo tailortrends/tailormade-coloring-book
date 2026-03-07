@@ -121,7 +121,7 @@ async def health():
     except Exception as e:
         checks["r2"] = f"error: {str(e)[:100]}"
 
-    status = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    status = "ok" if checks.get("firebase") == "ok" and checks.get("r2") == "ok" else "degraded"
     return Response(
         content=json.dumps({"status": status, "checks": checks}),
         status_code=200 if status == "ok" else 503,
