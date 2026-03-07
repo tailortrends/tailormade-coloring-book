@@ -21,8 +21,11 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+firebase_init_error = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global firebase_init_error
     # FIX 5: Validate all required env vars at startup
     from app.config import get_settings
 
@@ -44,12 +47,14 @@ async def lifespan(app: FastAPI):
             try:
                 cert_dict = json.loads(cert_val)
                 cred = credentials.Certificate(cert_dict)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as je:
+                firebase_init_error = f"JSONDecodeError: {je} | val length: {len(cert_val)}"
                 cred = credentials.Certificate(cert_val)
                 
             firebase_admin.initialize_app(cred)
         logger.info("firebase_initialized")
     except Exception as e:
+        firebase_init_error = firebase_init_error or str(e)
         if settings.is_production:
             raise RuntimeError(f"Firebase credentials required in production: {e}")
         logger.warning(f"firebase_disabled_dev_mode: {e}")
@@ -98,7 +103,11 @@ async def health():
         db.collection("_health").limit(1).get()
         checks["firebase"] = "ok"
     except Exception as e:
-        checks["firebase"] = f"error: {str(e)[:100]}"
+        import app.main as main_mod
+        if hasattr(main_mod, "firebase_init_error") and main_mod.firebase_init_error:
+            checks["firebase"] = f"Init Failed: {main_mod.firebase_init_error}"
+        else:
+            checks["firebase"] = f"error: {str(e)[:100]}"
 
     try:
         from app.services.storage import _get_r2_client
