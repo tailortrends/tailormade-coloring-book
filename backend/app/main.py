@@ -45,10 +45,14 @@ async def lifespan(app: FastAPI):
                 cert_val = settings.firebase_service_account_path
                 
             try:
-                cert_dict = json.loads(cert_val)
+                import ast
+                try:
+                    cert_dict = json.loads(cert_val)
+                except json.JSONDecodeError:
+                    cert_dict = ast.literal_eval(cert_val)
                 cred = credentials.Certificate(cert_dict)
-            except json.JSONDecodeError as je:
-                firebase_init_error = f"JSONDecodeError: {je} | val length: {len(cert_val)}"
+            except Exception as je:
+                firebase_init_error = f"ParseError: {je} | val length: {len(cert_val)}"
                 cred = credentials.Certificate(cert_val)
                 
             firebase_admin.initialize_app(cred)
@@ -103,11 +107,9 @@ async def health():
         db.collection("_health").limit(1).get()
         checks["firebase"] = "ok"
     except Exception as e:
-        import app.main as main_mod
-        if hasattr(main_mod, "firebase_init_error") and main_mod.firebase_init_error:
-            checks["firebase"] = f"Init Failed: {main_mod.firebase_init_error}"
-        else:
-            checks["firebase"] = f"error: {str(e)[:100]}"
+        checks["firebase"] = globals().get("firebase_init_error") or f"error: {str(e)[:100]}"
+    
+    checks["version"] = 2
 
     try:
         from app.services.storage import _get_r2_client
