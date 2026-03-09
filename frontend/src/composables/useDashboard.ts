@@ -1,16 +1,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { 
-  getFirestore, 
-  doc, 
-  getDoc, 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  getDocs 
-} from 'firebase/firestore'
+import { getFirestore, doc, getDoc } from 'firebase/firestore'
+import { useBooksStore } from '@/stores/books'
 
 export interface BookRecord {
   id: string
@@ -50,6 +41,7 @@ export interface DashboardData {
 
 export function useDashboard() {
   const authStore = useAuthStore()
+  const booksStore = useBooksStore()
   const db = getFirestore()
   
   const data = ref<DashboardData>({
@@ -133,24 +125,19 @@ export function useDashboard() {
         data.value.nextResetDate = resetStr
       }
       
-      // 2. Fetch recent books
-      const booksQuery = query(
-        collection(db, 'books'),
-        where('uid', '==', authStore.uid),
-        orderBy('created_at', 'desc'),
-        limit(6)
-      )
-      
-      const booksSnap = await getDocs(booksQuery)
-      data.value.recentBooks = booksSnap.docs.map(d => ({
-        id: d.id,
-        title: d.data().title ?? 'Untitled Book',
-        theme: d.data().theme ?? 'general',
-        page_count: d.data().page_count ?? 0,
-        pdf_url: d.data().pdf_url ?? '',
-        cover_url: d.data().cover_url ?? '',
-        created_at: d.data().created_at,
-        status: d.data().status ?? 'complete'
+      // 2. Fetch recent books via API (to bypass restricted Firestore client rules)
+      if (booksStore.books.length === 0) {
+        await booksStore.fetchBooks()
+      }
+      data.value.recentBooks = booksStore.books.slice(0, 6).map(b => ({
+        id: b.book_id,
+        title: b.title,
+        theme: b.theme,
+        page_count: b.page_count,
+        pdf_url: b.pdf_url ?? '',
+        cover_url: b.page_urls?.[0] || '', // the backend provides first page as cover visually
+        created_at: b.created_at,
+        status: b.status
       }))
       
       // 3. Calculate top theme from recent books
