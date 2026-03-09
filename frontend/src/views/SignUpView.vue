@@ -1,23 +1,36 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from '@/firebase'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const authError = ref<string | null>(null)
+
+// Reactively navigate when authentication state syncs
+watch(() => authStore.isAuthenticated, (isAuth) => {
+  if (isAuth) {
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.push(redirect)
+  }
+}, { immediate: true })
 
 async function signUpWithGoogle() {
   authError.value = null
   try {
     await signInWithPopup(auth, googleProvider)
-    const redirect = (route.query.redirect as string) || '/dashboard'
-    router.push(redirect)
+    // The watcher above handles the actual redirection once authStore updates
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sign-up failed'
     authError.value = message
   }
+}
+
+function handleEmailSignup() {
+  authError.value = 'Email signup is not yet configured. Please sign up with Google.'
 }
 </script>
 
@@ -92,7 +105,7 @@ async function signUpWithGoogle() {
             <div class="h-px bg-slate-200 dark:bg-slate-600 flex-1"></div>
           </div>
 
-          <form class="space-y-5" @submit.prevent="$router.push('/dashboard')">
+          <form class="space-y-5" @submit.prevent="handleEmailSignup">
             <div class="space-y-1.5">
               <label for="name" class="block text-slate-700 dark:text-slate-200 text-sm font-semibold ml-1">Parent's Name</label>
               <div class="relative">

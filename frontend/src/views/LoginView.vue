@@ -1,23 +1,36 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from '@/firebase'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const authError = ref<string | null>(null)
+
+// Reactively navigate when authentication state syncs
+watch(() => authStore.isAuthenticated, (isAuth) => {
+  if (isAuth) {
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.push(redirect)
+  }
+}, { immediate: true })
 
 async function signInWithGoogle() {
   authError.value = null
   try {
     await signInWithPopup(auth, googleProvider)
-    const redirect = (route.query.redirect as string) || '/dashboard'
-    router.push(redirect)
+    // The watcher above handles the actual redirection once authStore updates
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sign-in failed'
     authError.value = message
   }
+}
+
+function handleEmailLogin() {
+  authError.value = 'Email login is not yet configured. Please sign in with Google.'
 }
 </script>
 
@@ -78,7 +91,7 @@ async function signInWithGoogle() {
               <p class="text-slate-500 dark:text-slate-400 font-medium">Sign in to create more magical coloring books.</p>
             </div>
 
-            <form class="flex flex-col gap-5" @submit.prevent="$router.push('/dashboard')">
+            <form class="flex flex-col gap-5" @submit.prevent="handleEmailLogin">
               <!-- Google Sign In Button -->
               <button type="button" @click="signInWithGoogle" class="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 p-3.5 text-slate-700 dark:text-white transition-all hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-slate-100">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
