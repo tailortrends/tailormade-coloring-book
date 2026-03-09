@@ -17,36 +17,13 @@ app.use(router)
 
 const authStore = useAuthStore()
 
-// Resolves once Firebase has determined the initial auth state
-let authReady: Promise<void>
-let resolveAuth: () => void
-authReady = new Promise((resolve) => {
-  resolveAuth = resolve
-})
-
-let isFirstCheck = true
-onAuthStateChanged(auth, (user) => {
+// Wait for Firebase to resolve auth state before mounting.
+const unsub = onAuthStateChanged(auth, (user) => {
+  unsub()
   if (user) {
-    authStore.setUser({
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-    })
+    authStore.setUser(user)
   } else {
     authStore.clearUser()
   }
-  if (isFirstCheck) {
-    isFirstCheck = false
-    resolveAuth()
-  }
+  app.mount('#app')
 })
-
-// Route guard: redirect unauthenticated users to /login for protected routes
-router.beforeEach(async (to) => {
-  await authReady
-  if (!to.meta.public && !authStore.isAuthenticated) {
-    return { name: 'login', query: { redirect: to.fullPath } }
-  }
-})
-
-app.mount('#app')

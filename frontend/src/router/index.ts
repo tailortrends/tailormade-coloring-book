@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,7 @@ const router = createRouter({
     { path: '/library', name: 'library', component: () => import('@/views/LibraryView.vue'), meta: { public: true } },
     { path: '/pricing', name: 'pricing', component: () => import('@/views/PricingView.vue'), meta: { public: true } },
     { path: '/community', name: 'community', component: () => import('@/views/CommunityView.vue'), meta: { public: true } },
+    { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue') },
     { path: '/profiles', name: 'profiles', component: () => import('@/views/ProfilesView.vue') },
     { path: '/profiles/add', name: 'profiles-add', component: () => import('@/views/ProfileAddView.vue') },
     { path: '/share', name: 'share', component: () => import('@/views/ShareView.vue') },
@@ -26,6 +28,32 @@ const router = createRouter({
     { path: '/import', name: 'import', component: () => import('@/views/ImportFromDriveView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const authStore = useAuthStore()
+
+  // Wait for auth to initialize on hard refresh
+  if (!authStore.isReady) {
+    await new Promise<void>((resolve) => {
+      const unwatch = authStore.$subscribe((mutation, state) => {
+        if (state.isReady) {
+          unwatch()
+          resolve()
+        }
+      })
+    })
+  }
+
+  // Protected route + not logged in → redirect to login
+  if (!to.meta.public && !authStore.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // Already logged in + visiting login/signup → redirect to dashboard
+  if ((to.name === 'login' || to.name === 'signup') && authStore.isAuthenticated) {
+    return { name: 'dashboard' }
+  }
 })
 
 export default router

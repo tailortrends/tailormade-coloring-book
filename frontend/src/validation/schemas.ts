@@ -11,7 +11,7 @@ export const bookGenerateSchema = z.object({
     .min(2, 'Theme is required'),
   age_range: z.enum(['2-4', '4-6', '6-9', '9-12'], {
     errorMap: () => ({ message: 'Please select an age range' }),
-  }),
+  } as any),
   page_count: z
     .number()
     .int()
@@ -37,7 +37,7 @@ export const profileSchema = z.object({
     .max(50, 'Name must be at most 50 characters'),
   age_range: z.enum(['2-4', '4-6', '6-9', '9-12'], {
     errorMap: () => ({ message: 'Please select an age range' }),
-  }),
+  } as any),
   theme: z
     .string()
     .min(1, 'Please choose a theme'),

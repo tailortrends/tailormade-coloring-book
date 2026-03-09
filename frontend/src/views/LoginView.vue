@@ -25,11 +25,8 @@ async function signInWithGoogle() {
   <div class="bg-background-light dark:bg-background-dark font-display min-h-screen flex flex-col overflow-x-hidden">
     <!-- Header -->
     <header class="flex items-center justify-between whitespace-nowrap bg-white dark:bg-background-dark border-b border-slate-100 dark:border-slate-800 px-6 py-4 md:px-10 lg:px-20 relative z-20">
-      <RouterLink to="/" class="flex items-center gap-3 text-slate-900 dark:text-white">
-        <div class="size-8 text-primary">
-          <span class="material-symbols-outlined text-[32px]">palette</span>
-        </div>
-        <h2 class="text-xl font-bold leading-tight tracking-tight">ColorMagic AI</h2>
+      <RouterLink to="/" class="flex items-center gap-2">
+        <img src="/logo.png" alt="TailorMade Coloring Book" class="h-9 w-auto max-w-[180px] sm:max-w-[160px] object-contain" />
       </RouterLink>
 
       <div class="hidden md:flex flex-1 justify-end gap-8">
@@ -54,8 +51,12 @@ async function signInWithGoogle() {
       <div class="absolute bottom-20 right-10 w-64 h-64 rounded-full bg-purple-200 opacity-20 blur-3xl pointer-events-none"></div>
       <div class="absolute top-1/2 left-1/4 w-40 h-40 rounded-full bg-primary opacity-10 blur-3xl pointer-events-none"></div>
 
+      <!-- Logo above card -->
+      <div class="flex flex-col items-center gap-6 z-10 w-full max-w-[1000px]">
+        <img src="/logo.png" alt="TailorMade Coloring Book" class="h-16 w-auto max-w-[280px] object-contain mx-auto mb-6 md:hidden" />
+
       <!-- Card Container: Two-column split -->
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-[1000px] overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-slate-100 dark:border-slate-700 z-10">
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-slate-100 dark:border-slate-700">
         <!-- Left Side: Image/Banner -->
         <div class="md:w-5/12 relative bg-primary/5 hidden md:flex flex-col">
           <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAyBitzfFDQ7RA12l9Ba08CKt0lZO4L0uVkkspOLwx3sft46Wvt3bacPL7lMDvje7rrNS58Uw3xk1u3sFZKwaHNJRGPEkrdTskAVg2ZMg4TmvhF3BVPTU_1Cr9ESFlvy6s02hZSgtFOj30UFVdaZIDGlPh3cmAA-e6XMKlwhIclLa1dHpSBGZ2f3ZWCR8ysf9VQJE-zYWtP6URE7_jQdjdNOmDrxNElr7qRwn6-azZseZ5_i5X05VlsPfubSHq41tbHSHfHtKRuKZD8');"></div>
@@ -138,6 +139,7 @@ async function signInWithGoogle() {
             </p>
           </div>
         </div>
+      </div>
       </div>
     </main>
   </div>

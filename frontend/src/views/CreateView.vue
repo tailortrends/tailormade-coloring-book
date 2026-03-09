@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { RouterLink, onBeforeRouteLeave } from 'vue-router'
+import UpgradeCTA from '@/components/UpgradeCTA.vue'
+import { RouterLink, onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useBooksStore } from '@/stores/books'
 import { useFormValidation } from '@/composables/useFormValidation'
+import { useBookQuota } from '@/composables/useBookQuota'
 import { bookGenerateSchema } from '@/validation/schemas'
 import type { Book } from '@/types/book'
 
 const store = useBooksStore()
+const route = useRoute()
 const { errors, validate, clearErrors } = useFormValidation(bookGenerateSchema)
+const { isAtLimit } = useBookQuota()
 
 // Cancel generation on navigation or unmount
 onBeforeRouteLeave(() => {
@@ -20,7 +24,7 @@ onBeforeUnmount(() => {
 
 const childName = ref('')
 const ageRange = ref('6-9')
-const theme = ref('animals')
+const theme = ref((route.query.theme as string) || 'animals')
 const pageCount = ref(6)
 const storyPrompt = ref('')
 
@@ -199,6 +203,9 @@ async function handleGenerate() {
             </RouterLink>
           </div>
         </div>
+
+        <!-- At Limit: show upgrade CTA -->
+        <UpgradeCTA v-else-if="isAtLimit" />
 
         <!-- Form Container -->
         <div v-else class="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 relative overflow-hidden">

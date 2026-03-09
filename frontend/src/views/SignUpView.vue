@@ -25,11 +25,9 @@ async function signUpWithGoogle() {
   <div class="bg-background-light dark:bg-background-dark font-display min-h-screen flex flex-col overflow-x-hidden">
     <!-- Header -->
     <header class="w-full px-6 py-4 md:px-10 flex items-center justify-between z-10 relative bg-white/80 backdrop-blur-md dark:bg-background-dark/80 sticky top-0 border-b border-slate-100 dark:border-slate-800">
-      <RouterLink to="/" class="flex items-center gap-3 text-slate-900 dark:text-white group">
-        <div class="size-8 text-primary group-hover:rotate-6 transition-transform">
-          <span class="material-symbols-outlined text-[32px]">palette</span>
-        </div>
-        <h2 class="text-xl font-bold leading-tight tracking-tight">ColorMagic AI</h2>
+      <RouterLink to="/" class="flex items-center gap-2 group">
+        <img src="/logo3.png" alt="TailorMade Coloring Book" class="h-9 w-auto dark:hidden" />
+        <span class="hidden dark:inline text-xl font-bold tracking-tight" style="color: #6B9EC7;">TailorMade</span>
       </RouterLink>
 
       <div class="hidden md:flex flex-1 justify-end gap-8 items-center">
@@ -71,7 +69,8 @@ async function signUpWithGoogle() {
         
         <div class="p-8 md:p-10">
           <div class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-3">Join ColorMagic AI</h1>
+            <img src="/logo3.png" alt="TailorMade Coloring Book" class="h-14 w-auto mx-auto mb-4 dark:hidden" />
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-3">Join TailorMade</h1>
             <p class="text-slate-500 dark:text-slate-400 text-lg">Create personalized coloring books for your kids in seconds!</p>
           </div>
 

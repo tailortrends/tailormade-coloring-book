@@ -1,22 +1,32 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { User } from 'firebase/auth'
 
 export type UserTier = 'free' | 'pro' | 'premium'
 
 export const useAuthStore = defineStore('auth', () => {
-  const uid = ref<string | null>(null)
-  const email = ref<string | null>(null)
-  const displayName = ref<string | null>(null)
+  const user = ref<User | null>(null)
+  const isReady = ref(false)
   const tier = ref<UserTier>('free')
   const creditsRemaining = ref(0)
 
-  const isAuthenticated = computed(() => uid.value !== null)
+  const isAuthenticated = computed(() => !!user.value)
   const isPro = computed(() => tier.value === 'pro' || tier.value === 'premium')
+  const displayName = computed(() => user.value?.displayName || user.value?.email || 'User')
+  const photoURL = computed(() => user.value?.photoURL || null)
+  const email = computed(() => user.value?.email || null)
+  const uid = computed(() => user.value?.uid || null)
 
-  function setUser(user: { uid: string; email: string | null; displayName: string | null }) {
-    uid.value = user.uid
-    email.value = user.email
-    displayName.value = user.displayName
+  function setUser(newUser: User) {
+    user.value = newUser
+    isReady.value = true
+  }
+
+  function clearUser() {
+    user.value = null
+    isReady.value = true
+    tier.value = 'free'
+    creditsRemaining.value = 0
   }
 
   function setTier(newTier: UserTier) {
@@ -33,26 +43,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function clearUser() {
-    uid.value = null
-    email.value = null
-    displayName.value = null
-    tier.value = 'free'
-    creditsRemaining.value = 0
-  }
-
   return {
+    user,
+    isReady,
     uid,
     email,
     displayName,
+    photoURL,
     tier,
     creditsRemaining,
     isAuthenticated,
     isPro,
     setUser,
+    clearUser,
     setTier,
     setCredits,
     decrementCredits,
-    clearUser,
   }
 })
