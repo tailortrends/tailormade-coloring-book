@@ -137,7 +137,6 @@ export function useDashboard() {
       const booksQuery = query(
         collection(db, 'books'),
         where('uid', '==', authStore.uid),
-        where('status', '==', 'completed'),
         orderBy('created_at', 'desc'),
         limit(6)
       )
@@ -151,7 +150,7 @@ export function useDashboard() {
         pdf_url: d.data().pdf_url ?? '',
         cover_url: d.data().cover_url ?? '',
         created_at: d.data().created_at,
-        status: d.data().status ?? 'completed'
+        status: d.data().status ?? 'complete'
       }))
       
       // 3. Calculate top theme from recent books
