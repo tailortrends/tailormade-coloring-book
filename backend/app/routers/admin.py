@@ -1,18 +1,24 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 import structlog
 
+from app.config import get_settings
 from app.services import firebase
 
 logger = structlog.get_logger()
+settings = get_settings()
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
 @router.get("/stats")
-async def get_stats():
+async def get_stats(x_admin_token: str = Header(None)):
     """
     Admin dashboard: aggregated cost metrics from the 'costs' collection.
     Returns average cost per book, total spend, and most expensive prompt.
+    Protected by X-Admin-Token header.
     """
+    if not x_admin_token or x_admin_token != settings.admin_secret_token:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+
     costs = await firebase.get_all_costs(limit=500)
 
     if not costs:

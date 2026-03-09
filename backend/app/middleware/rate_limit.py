@@ -107,13 +107,43 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
                 max_pages=settings.free_max_pages, tier="free"
             )
 
-        # 5. BLOCKED
+        # 5. BLOCKED — build quota info for the frontend
+        if sub_tier in ("teacher", "family") and active:
+            # Subscription user who exhausted monthly allowance
+            limit_val = (
+                settings.teacher_monthly_limit if sub_tier == "teacher"
+                else settings.family_monthly_limit
+            )
+            used_val = monthly
+            # Reset is first of next month
+            if now.month == 12:
+                reset = now.replace(year=now.year + 1, month=1, day=1,
+                                    hour=0, minute=0, second=0, microsecond=0)
+            else:
+                reset = now.replace(month=now.month + 1, day=1,
+                                    hour=0, minute=0, second=0, microsecond=0)
+        else:
+            # Free tier — lifetime limit
+            limit_val = settings.free_lifetime_limit
+            used_val = total
+            reset = None
+
         raise HTTPException(
             status_code=429,
-            detail=(
-                "You've used your free book! Upgrade to create more "
-                "personalized books for your little artist."
-            ),
+            detail={
+                "message": (
+                    "You've used your free book! Upgrade to create more "
+                    "personalized books for your little artist."
+                ),
+                "quota": {
+                    "used": used_val,
+                    "limit": limit_val,
+                    "remaining": max(0, limit_val - used_val),
+                    "reset_date": reset.isoformat() if reset else None,
+                    "tier": sub_tier,
+                    "is_subscription_active": active,
+                },
+            },
         )
 
     loop = asyncio.get_event_loop()

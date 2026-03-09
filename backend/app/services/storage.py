@@ -38,6 +38,28 @@ async def upload_image(image_bytes: bytes, book_id: str, page_number: int) -> st
     return url
 
 
+async def delete_book_assets(book_id: str) -> None:
+    """Delete all R2 objects under books/{book_id}/."""
+    prefix = f"books/{book_id}/"
+    loop = asyncio.get_event_loop()
+
+    def _delete():
+        client = _get_r2_client()
+        resp = client.list_objects_v2(
+            Bucket=settings.r2_bucket_name, Prefix=prefix
+        )
+        objects = resp.get("Contents", [])
+        if not objects:
+            return
+        client.delete_objects(
+            Bucket=settings.r2_bucket_name,
+            Delete={"Objects": [{"Key": o["Key"]} for o in objects]},
+        )
+
+    await loop.run_in_executor(None, _delete)
+    logger.info("book_assets_deleted", book_id=book_id, prefix=prefix)
+
+
 async def upload_pdf(pdf_bytes: bytes, book_id: str) -> str:
     """Upload the final PDF to R2, return public URL."""
     key = f"books/{book_id}/book.pdf"

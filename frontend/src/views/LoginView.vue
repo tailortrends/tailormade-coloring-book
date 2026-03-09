@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from '@/firebase'
 
 const router = useRouter()
+const route = useRoute()
 const authError = ref<string | null>(null)
 
 async function signInWithGoogle() {
   authError.value = null
   try {
     await signInWithPopup(auth, googleProvider)
-    router.push('/dashboard')
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.push(redirect)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sign-in failed'
     authError.value = message

@@ -46,9 +46,17 @@ class Settings(BaseSettings):
     teacher_monthly_limit: int = 25
     teacher_max_pages: int = 12
 
+    # Admin
+    admin_uids: str = ""  # Comma-separated Firebase UIDs
+    admin_secret_token: str = ""  # X-Admin-Token header value
+
     # Generation limits
     max_pages: int = 15
     max_concurrent_fal_calls: int = 5
+
+    @property
+    def admin_uid_list(self) -> list[str]:
+        return [u.strip() for u in self.admin_uids.split(",") if u.strip()]
 
     # Cost tracking (per-unit rates for margin calculation)
     # fal.ai FLUX LoRA: $0.035/megapixel × 2.10 MP (1216×1728) = $0.074/image

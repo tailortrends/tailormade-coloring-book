@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, onBeforeRouteLeave } from 'vue-router'
 import { useBooksStore } from '@/stores/books'
+import { useFormValidation } from '@/composables/useFormValidation'
+import { bookGenerateSchema } from '@/validation/schemas'
 import type { Book } from '@/types/book'
 
 const store = useBooksStore()
+const { errors, validate, clearErrors } = useFormValidation(bookGenerateSchema)
+
+// Cancel generation on navigation or unmount
+onBeforeRouteLeave(() => {
+  if (store.isGenerating) store.cancelGeneration()
+})
+onBeforeUnmount(() => {
+  if (store.isGenerating) store.cancelGeneration()
+})
 
 const childName = ref('')
 const ageRange = ref('6-9')
@@ -28,6 +39,15 @@ const title = computed(() => {
   return name ? `${name}'s ${t} Adventure` : `My ${t} Adventure`
 })
 
+const formData = computed(() => ({
+  title: title.value,
+  theme: THEME_MAP[theme.value] ?? theme.value,
+  age_range: ageRange.value,
+  page_count: pageCount.value,
+  story_prompt: storyPrompt.value || undefined,
+  character_names: childName.value.trim() ? [childName.value.trim()] : undefined,
+}))
+
 function appendChip(text: string) {
   const base = storyPrompt.value.trimEnd()
   const joined = base ? `${base} ${text}` : text
@@ -35,17 +55,13 @@ function appendChip(text: string) {
 }
 
 async function handleGenerate() {
+  clearErrors()
+  if (!validate(formData.value)) return
+
   completedBook.value = null
   try {
-    const book = await store.generateBook({
-      title: title.value,
-      theme: THEME_MAP[theme.value] ?? theme.value,
-      age_range: ageRange.value,
-      page_count: pageCount.value,
-      story_prompt: storyPrompt.value || undefined,
-      character_names: childName.value.trim() ? [childName.value.trim()] : undefined,
-    })
-    completedBook.value = book
+    const book = await store.generateBook(formData.value)
+    if (book) completedBook.value = book
   } catch {
     // error is already in store.error
   }
@@ -115,6 +131,12 @@ async function handleGenerate() {
               <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-1000 animate-pulse" style="width: 60%;"></div>
             </div>
           </div>
+          <button
+            @click="store.cancelGeneration()"
+            class="mt-2 px-6 py-2 rounded-full text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            Cancel
+          </button>
         </div>
 
         <!-- Success State -->
@@ -411,6 +433,16 @@ async function handleGenerate() {
                 Goes on adventures
               </button>
             </div>
+          </div>
+
+          <!-- Validation Errors -->
+          <div v-if="Object.keys(errors).length" class="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+            <ul class="text-sm text-red-600 dark:text-red-400 space-y-1">
+              <li v-for="(msg, field) in errors" :key="field" class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm">warning</span>
+                {{ msg }}
+              </li>
+            </ul>
           </div>
 
           <!-- Submit -->

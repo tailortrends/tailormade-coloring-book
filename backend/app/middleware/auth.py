@@ -1,6 +1,6 @@
 import firebase_admin
 from firebase_admin import auth as firebase_auth
-from fastapi import HTTPException, Security
+from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import structlog
 from app.config import get_settings
@@ -41,3 +41,12 @@ async def get_current_user(
     except Exception as e:
         logger.warning("auth_failed_unexpected", error=str(e))
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+async def get_admin_user(
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Verify the authenticated user is an admin."""
+    if user["uid"] not in settings.admin_uid_list:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user

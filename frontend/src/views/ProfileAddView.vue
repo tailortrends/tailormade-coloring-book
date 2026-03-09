@@ -1,10 +1,23 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useRouter } from 'vue-router'
+import { useFormValidation } from '@/composables/useFormValidation'
+import { profileSchema } from '@/validation/schemas'
 
 const router = useRouter()
+const { errors, validate, clearErrors } = useFormValidation(profileSchema)
+
+const childName = ref('')
+const ageRange = ref('')
+const selectedTheme = ref('space')
 
 function handleSave() {
+  clearErrors()
+  if (!validate({ name: childName.value, age_range: ageRange.value, theme: selectedTheme.value })) {
+    return
+  }
+  // TODO: persist profile to backend/store
   router.push('/profiles')
 }
 
@@ -41,20 +54,19 @@ function handleCancel() {
           <div class="flex flex-col md:flex-row gap-6">
             <label class="flex flex-col flex-1 gap-2">
               <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Child's Name</span>
-              <input class="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-primary focus:ring-1 transition-all" placeholder="e.g. Charlie" type="text" />
+              <input v-model="childName" class="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-primary focus:ring-primary focus:ring-1 transition-all" :class="{ 'border-red-400 dark:border-red-500': errors.name }" placeholder="e.g. Charlie" type="text" />
+              <span v-if="errors.name" class="text-xs text-red-500 mt-1">{{ errors.name }}</span>
             </label>
             <label class="flex flex-col w-full md:w-1/3 gap-2">
-              <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Age</span>
-              <select class="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary focus:ring-1 transition-all">
-                <option disabled selected value="">Select Age</option>
-                <option value="2">2 years old</option>
-                <option value="3">3 years old</option>
-                <option value="4">4 years old</option>
-                <option value="5">5 years old</option>
-                <option value="6">6 years old</option>
-                <option value="7">7 years old</option>
-                <option value="8+">8+ years old</option>
+              <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Age Range</span>
+              <select v-model="ageRange" class="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary focus:ring-1 transition-all" :class="{ 'border-red-400 dark:border-red-500': errors.age_range }">
+                <option disabled value="">Select Age Range</option>
+                <option value="2-4">2–4 (Toddler)</option>
+                <option value="4-6">4–6 (Beginner)</option>
+                <option value="6-9">6–9 (Kids)</option>
+                <option value="9-12">9–12 (Tweens)</option>
               </select>
+              <span v-if="errors.age_range" class="text-xs text-red-500 mt-1">{{ errors.age_range }}</span>
             </label>
           </div>
 
@@ -63,7 +75,7 @@ function handleCancel() {
             <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Favorite Theme</span>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label class="cursor-pointer">
-                <input class="peer sr-only" name="theme" type="radio" value="dinos" />
+                <input v-model="selectedTheme" class="peer sr-only" name="theme" type="radio" value="dinos" />
                 <div class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:ring-1 peer-checked:ring-primary transition-all hover:bg-slate-50 dark:hover:bg-slate-700">
                   <div class="size-12 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center">
                     <span class="material-symbols-outlined text-2xl">pest_control</span>
@@ -72,7 +84,7 @@ function handleCancel() {
                 </div>
               </label>
               <label class="cursor-pointer">
-                <input checked class="peer sr-only" name="theme" type="radio" value="space" />
+                <input v-model="selectedTheme" class="peer sr-only" name="theme" type="radio" value="space" />
                 <div class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:ring-1 peer-checked:ring-primary transition-all hover:bg-slate-50 dark:hover:bg-slate-700">
                   <div class="size-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                     <span class="material-symbols-outlined text-2xl">rocket_launch</span>
@@ -81,7 +93,7 @@ function handleCancel() {
                 </div>
               </label>
               <label class="cursor-pointer">
-                <input class="peer sr-only" name="theme" type="radio" value="unicorns" />
+                <input v-model="selectedTheme" class="peer sr-only" name="theme" type="radio" value="unicorns" />
                 <div class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:ring-1 peer-checked:ring-primary transition-all hover:bg-slate-50 dark:hover:bg-slate-700">
                   <div class="size-12 rounded-full bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center">
                     <span class="material-symbols-outlined text-2xl">auto_fix</span>

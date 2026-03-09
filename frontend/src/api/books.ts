@@ -1,8 +1,8 @@
 import { api } from './client'
 import type { Book, BookGenerateRequest } from '@/types/book'
 
-export function generate(params: BookGenerateRequest): Promise<Book> {
-  return api.post<Book>('/api/v1/books/generate', params)
+export function generate(params: BookGenerateRequest, signal?: AbortSignal): Promise<Book> {
+  return api.post<Book>('/api/v1/books/generate', params, { timeout: 5 * 60_000, signal })
 }
 
 export function getById(bookId: string): Promise<Book> {

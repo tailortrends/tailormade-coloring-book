@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from datetime import datetime, timezone
 import uuid
 import tempfile
@@ -237,6 +237,24 @@ async def get_book(book_id: str, user: dict = Depends(get_current_user)):
     if data.get("uid") != user["uid"]:
         raise HTTPException(status_code=403, detail="Not your book")
     return BookResponse(**data)
+
+
+@router.delete("/{book_id}", status_code=204)
+async def delete_book(book_id: str, user: dict = Depends(get_current_user)):
+    data = await firebase.get_book(book_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if data.get("uid") != user["uid"]:
+        raise HTTPException(status_code=403, detail="Not your book")
+
+    # Delete R2 assets (best-effort — don't fail the request if cleanup errors)
+    try:
+        await storage.delete_book_assets(book_id)
+    except Exception as e:
+        logger.warning("r2_cleanup_failed", book_id=book_id, error=str(e))
+
+    await firebase.delete_book(book_id)
+    return Response(status_code=204)
 
 
 @router.get("/", response_model=list[BookResponse])
