@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     admin_uids: str = ""  # Comma-separated Firebase UIDs
     admin_secret_token: str = ""  # X-Admin-Token header value
 
+    # Sentry
+    sentry_dsn: str = ""  # Backend Sentry DSN (from env)
+
     # Generation limits
     max_pages: int = 15
     max_concurrent_fal_calls: int = 5

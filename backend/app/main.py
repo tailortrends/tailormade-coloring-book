@@ -37,6 +37,19 @@ async def lifespan(app: FastAPI):
         print("Copy .env.example to .env and fill in your values.")
         raise SystemExit(1)
 
+    # Sentry init (silently skip if no DSN configured)
+    if settings.sentry_dsn:
+        try:
+            import sentry_sdk
+            sentry_sdk.init(
+                dsn=settings.sentry_dsn,
+                traces_sample_rate=0.2,
+                environment=settings.app_env,
+            )
+            logger.info("sentry_initialized")
+        except Exception as e:
+            logger.warning("sentry_init_failed", error=str(e))
+
     # Firebase init
     try:
         if not firebase_admin._apps:
@@ -86,13 +99,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import auth, books, admin, library, characters  # noqa: E402
+from app.routers import auth, books, admin, library, characters, profiles  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(books.router)
 app.include_router(admin.router)
 app.include_router(library.router)
 app.include_router(characters.router)
+app.include_router(profiles.router)
 
 
 @app.get("/health")

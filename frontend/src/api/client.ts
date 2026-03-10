@@ -114,6 +114,10 @@ export const api = {
     return request<T>(path, { ...options, method: 'POST', body })
   },
 
+  put<T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<T> {
+    return request<T>(path, { ...options, method: 'PUT', body })
+  },
+
   delete<T>(path: string, options?: Omit<RequestOptions, 'method'>): Promise<T> {
     return request<T>(path, { ...options, method: 'DELETE' })
   },

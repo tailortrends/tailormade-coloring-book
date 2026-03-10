@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getFirestore, doc, getDoc } from 'firebase/firestore'
 import { useBooksStore } from '@/stores/books'
 import * as charactersApi from '@/api/characters'
+import { getLibraryStats, type LibraryStats } from '@/api/library'
 export interface BookRecord {
   id: string
   title: string
@@ -37,6 +38,13 @@ export interface DashboardData {
   // Custom Characters
   customCharacters: any[]
 
+  // Library stats
+  libraryStats: {
+    totalImages: number
+    hitRate: number
+    estimatedSavings: number
+  } | null
+
   // Loading state
   loading: boolean
   error: string | null
@@ -62,6 +70,7 @@ export function useDashboard() {
     topTheme: null,
     topThemeCount: 0,
     customCharacters: [],
+    libraryStats: null,
     loading: true,
     error: null
   })
@@ -165,6 +174,19 @@ export function useDashboard() {
       } catch (e) {
         console.error('Failed to load custom characters', e)
         data.value.customCharacters = []
+      }
+
+      // 5. Fetch library stats
+      try {
+        const stats = await getLibraryStats()
+        data.value.libraryStats = {
+          totalImages: stats.cache.total_images,
+          hitRate: stats.aggregate.hit_rate_percent,
+          estimatedSavings: stats.aggregate.estimated_total_savings,
+        }
+      } catch (e) {
+        console.error('Failed to load library stats', e)
+        data.value.libraryStats = null
       }
       
     } catch (err: any) {

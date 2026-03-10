@@ -29,18 +29,21 @@ export const bookGenerateSchema = z.object({
 
 export type BookGenerateFormData = z.infer<typeof bookGenerateSchema>
 
-/** Mirrors profile creation */
+/** Mirrors backend profile creation */
 export const profileSchema = z.object({
   name: z
     .string()
     .min(1, 'Name is required')
     .max(50, 'Name must be at most 50 characters'),
-  age_range: z.enum(['2-4', '4-6', '6-9', '9-12'], {
-    errorMap: () => ({ message: 'Please select an age range' }),
-  } as any),
-  theme: z
-    .string()
-    .min(1, 'Please choose a theme'),
+  age: z
+    .number()
+    .int()
+    .min(2, 'Age must be at least 2')
+    .max(12, 'Age must be at most 12'),
+  favorite_themes: z
+    .array(z.string())
+    .min(1, 'Pick at least one theme')
+    .max(3, 'Pick up to 3 themes'),
 })
 
 export type ProfileFormData = z.infer<typeof profileSchema>

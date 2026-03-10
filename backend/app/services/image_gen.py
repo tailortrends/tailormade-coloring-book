@@ -124,12 +124,15 @@ class ImageResult:
     success: bool = True
     error: Optional[str] = None
     fal_attempts: int = 1  # number of fal.ai API calls for this page
+    from_library: bool = False  # True if served from pre-generated library
 
 
 @dataclass
 class ImageGenMetrics:
     total_attempts: int = 0
     total_image_spend: float = 0.0
+    library_hits: int = 0
+    library_misses: int = 0
 
 
 def _build_prompt(scene: Scene, variation: str = "") -> str:
@@ -370,12 +373,51 @@ def _is_valid_image(image_bytes: bytes, page_number: int) -> tuple[bool, str]:
 
 # ─── Generation orchestration ────────────────────────────────────────────────
 
-async def _generate_one(scene: Scene, semaphore: asyncio.Semaphore) -> ImageResult:
+async def _generate_one(
+    scene: Scene,
+    semaphore: asyncio.Semaphore,
+    use_library: bool = True,
+) -> ImageResult:
     """
-    Generate one page image with quality validation.
+    Generate one page image. Checks library cache first to avoid fal.ai costs.
+    On library miss, falls back to fal.ai with quality validation.
     On failure, retry with prompt variation (up to 3 attempts).
     On sparse_fill failure, retry with higher guidance_scale and density filler keywords.
     """
+    # ── Library cache check (skip for cover pages — those need custom composition) ──
+    if use_library and not scene.is_cover:
+        from app.services.library_cache import find_match
+        library_url = await find_match(
+            theme=scene.theme,
+            subject_hint=scene.subject_hint,
+            complexity=scene.complexity,
+        )
+        if library_url:
+            # Download to verify the image is accessible
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.get(library_url)
+                    resp.raise_for_status()
+                    img_bytes = resp.content
+                logger.info("library_image_used",
+                            page=scene.page_number,
+                            subject=scene.subject_hint,
+                            url=library_url)
+                return ImageResult(
+                    page_number=scene.page_number,
+                    image_url=library_url,
+                    image_bytes=img_bytes,
+                    success=True,
+                    fal_attempts=0,
+                    from_library=True,
+                )
+            except Exception as e:
+                logger.warning("library_image_download_failed",
+                               page=scene.page_number,
+                               url=library_url,
+                               error=str(e))
+                # Fall through to fal.ai generation
+
     async with semaphore:
         last_result = None
         fal_calls = 0
@@ -443,10 +485,15 @@ async def _generate_one(scene: Scene, semaphore: asyncio.Semaphore) -> ImageResu
 async def generate_images(scenes: list[Scene]) -> tuple[list[ImageResult], ImageGenMetrics]:
     """
     Fire ALL image generation calls concurrently.
+    Checks library cache first for each page; falls back to fal.ai on miss.
     Capped at max_concurrent_fal_calls via semaphore.
     Returns (results, metrics) for cost tracking.
     """
     logger.info("image_gen_start", page_count=len(scenes))
+
+    # Pre-warm the library index (single R2 list call, not per-page)
+    from app.services.library_cache import load_library_index
+    await load_library_index()
 
     results = await asyncio.gather(
         *[_generate_one(scene, _semaphore) for scene in scenes]
@@ -455,11 +502,15 @@ async def generate_images(scenes: list[Scene]) -> tuple[list[ImageResult], Image
     successful = [r for r in results if r.success]
     failed = [r for r in results if not r.success]
 
+    library_hits = sum(1 for r in results if r.from_library)
+    library_misses = sum(1 for r in results if not r.from_library)
     total_attempts = sum(r.fal_attempts for r in results)
     total_image_spend = total_attempts * settings.cost_flux_lora
     metrics = ImageGenMetrics(
         total_attempts=total_attempts,
         total_image_spend=total_image_spend,
+        library_hits=library_hits,
+        library_misses=library_misses,
     )
 
     logger.info(
@@ -467,6 +518,8 @@ async def generate_images(scenes: list[Scene]) -> tuple[list[ImageResult], Image
         total=len(scenes),
         successful=len(successful),
         failed=len(failed),
+        library_hits=library_hits,
+        library_misses=library_misses,
         fal_attempts=total_attempts,
         image_spend=round(total_image_spend, 4),
     )

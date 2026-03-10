@@ -15,6 +15,8 @@
     "format": "oxfmt src/"
   },
   "dependencies": {
+    "@sentry/vue": "^10.42.0",
+    "chart.js": "^4.5.1",
     "firebase": "^12.10.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.29",

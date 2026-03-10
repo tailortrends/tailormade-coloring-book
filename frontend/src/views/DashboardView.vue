@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useProfilesStore } from '@/stores/profiles'
 import { useDashboard } from '@/composables/useDashboard'
 
 import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const profilesStore = useProfilesStore()
 
 // We get our reactive data payload and the fetch function from the composable
 const { data: dashboard, fetchDashboard } = useDashboard()
@@ -66,6 +68,28 @@ function getInitials(title: string) {
             {{ dashboard.tierLabel }} Plan · {{ dashboard.booksRemaining }} {{ dashboard.booksRemaining === 1 ? 'book' : 'books' }} remaining
           </p>
         </header>
+
+        <!-- Active Child Profile -->
+        <div v-if="profilesStore.activeProfile" class="flex items-center gap-3 px-5 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div
+            class="size-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+            :style="{ backgroundColor: profilesStore.activeProfile.avatar_color }"
+          >
+            {{ profilesStore.activeProfile.name.charAt(0).toUpperCase() }}
+          </div>
+          <div class="flex flex-col">
+            <span class="text-sm font-bold text-slate-900 dark:text-white">{{ profilesStore.activeProfile.name }}</span>
+            <span class="text-xs text-slate-500 dark:text-slate-400">{{ profilesStore.activeProfile.age }} years old</span>
+          </div>
+          <RouterLink to="/profiles" class="ml-auto flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+            <span class="material-symbols-outlined text-sm">swap_horiz</span>
+            Switch Child
+          </RouterLink>
+        </div>
+        <RouterLink v-else-if="!profilesStore.isLoading && profilesStore.profiles.length === 0" to="/profiles/add" class="flex items-center gap-3 px-5 py-3 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 bg-primary/5 transition-colors">
+          <span class="material-symbols-outlined text-primary">person_add</span>
+          <span class="text-sm font-semibold text-primary">Add a child profile to personalize books</span>
+        </RouterLink>
 
         <!-- B) Three stat cards (3-col grid) -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -271,9 +295,31 @@ function getInitials(title: string) {
             </div>
           </div>
         </div>
-        
+
+        <!-- G) Library Stats card -->
+        <div v-if="dashboard.libraryStats" class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+          <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4">
+            <span class="material-symbols-outlined text-green-500">library_books</span>
+            Image Library
+          </h3>
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500 font-medium">Available Images</span>
+              <span class="text-sm font-bold text-slate-900 dark:text-white">{{ dashboard.libraryStats.totalImages.toLocaleString() }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500 font-medium">Cache Hit Rate</span>
+              <span class="text-sm font-bold" :class="dashboard.libraryStats.hitRate > 50 ? 'text-green-600' : 'text-slate-900 dark:text-white'">{{ dashboard.libraryStats.hitRate }}%</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500 font-medium">Est. Savings</span>
+              <span class="text-sm font-bold text-green-600">${{ dashboard.libraryStats.estimatedSavings.toFixed(2) }}</span>
+            </div>
+          </div>
+        </div>
+
       </div>
-      
+
     </div>
   </div>
 </template>

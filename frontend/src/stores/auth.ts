@@ -4,6 +4,11 @@ import type { User } from 'firebase/auth'
 
 export type UserTier = 'free' | 'pro' | 'premium'
 
+const ADMIN_UIDS = ((import.meta.env.VITE_ADMIN_UIDS as string) || '')
+  .split(',')
+  .map(u => u.trim())
+  .filter(Boolean)
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const isReady = ref(false)
@@ -12,6 +17,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!user.value)
   const isPro = computed(() => tier.value === 'pro' || tier.value === 'premium')
+  const isAdmin = computed(() => !!user.value && ADMIN_UIDS.includes(user.value.uid))
   const displayName = computed(() => user.value?.displayName || user.value?.email || 'User')
   const photoURL = computed(() => user.value?.photoURL || null)
   const email = computed(() => user.value?.email || null)
@@ -54,6 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     creditsRemaining,
     isAuthenticated,
     isPro,
+    isAdmin,
     setUser,
     clearUser,
     setTier,

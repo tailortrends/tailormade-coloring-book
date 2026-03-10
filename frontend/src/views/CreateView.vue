@@ -4,12 +4,14 @@ import AppHeader from '@/components/AppHeader.vue'
 import UpgradeCTA from '@/components/UpgradeCTA.vue'
 import { RouterLink, onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useBooksStore } from '@/stores/books'
+import { useProfilesStore } from '@/stores/profiles'
 import { useFormValidation } from '@/composables/useFormValidation'
 import { useBookQuota } from '@/composables/useBookQuota'
 import { bookGenerateSchema } from '@/validation/schemas'
 import type { Book } from '@/types/book'
 
 const store = useBooksStore()
+const profilesStore = useProfilesStore()
 const route = useRoute()
 const { errors, validate, clearErrors } = useFormValidation(bookGenerateSchema)
 const { isAtLimit } = useBookQuota()
@@ -22,9 +24,19 @@ onBeforeUnmount(() => {
   if (store.isGenerating) store.cancelGeneration()
 })
 
-const childName = ref('')
-const ageRange = ref('6-9')
-const theme = ref((route.query.theme as string) || 'animals')
+// Map child age (int) → closest age_range bracket
+function ageToRange(age: number): string {
+  if (age <= 4) return '2-4'
+  if (age <= 6) return '4-6'
+  if (age <= 9) return '6-9'
+  return '9-12'
+}
+
+// Pre-fill from active profile
+const activeProfile = profilesStore.activeProfile
+const childName = ref(activeProfile?.name ?? '')
+const ageRange = ref(activeProfile ? ageToRange(activeProfile.age) : '6-9')
+const theme = ref((route.query.theme as string) || activeProfile?.favorite_themes?.[0] || 'animals')
 const pageCount = ref(6)
 const storyPrompt = ref('')
 
@@ -118,6 +130,20 @@ async function handleGenerate() {
               </RouterLink>
             </div>
           </div>
+        </div>
+
+        <!-- Active Profile Indicator -->
+        <div v-if="activeProfile" class="flex items-center gap-3 px-5 py-3 rounded-xl bg-primary/5 border border-primary/15">
+          <div
+            class="size-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+            :style="{ backgroundColor: activeProfile.avatar_color }"
+          >
+            {{ activeProfile.name.charAt(0).toUpperCase() }}
+          </div>
+          <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            Creating for <span class="text-primary font-bold">{{ activeProfile.name }}</span>
+          </span>
+          <RouterLink to="/profiles" class="ml-auto text-xs font-bold text-primary hover:underline">Switch</RouterLink>
         </div>
 
         <!-- Loading Overlay -->

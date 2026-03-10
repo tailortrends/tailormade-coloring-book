@@ -3,10 +3,12 @@ import { RouterLink, useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/firebase'
 import { useAuthStore } from '@/stores/auth'
+import { useProfilesStore } from '@/stores/profiles'
 import { useBookQuota } from '@/composables/useBookQuota'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const profilesStore = useProfilesStore()
 const { booksRemaining, booksLimit, isAtLimit } = useBookQuota()
 
 async function handleSignOut() {
@@ -42,6 +44,20 @@ async function handleSignOut() {
           </span>
           <span v-else class="hidden sm:inline">Upgrade to create more</span>
         </div>
+        <!-- Active child profile pill -->
+        <RouterLink
+          v-if="profilesStore.activeProfile"
+          to="/profiles"
+          class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors"
+        >
+          <div
+            class="size-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+            :style="{ backgroundColor: profilesStore.activeProfile.avatar_color }"
+          >
+            {{ profilesStore.activeProfile.name.charAt(0).toUpperCase() }}
+          </div>
+          <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 max-w-[80px] truncate">{{ profilesStore.activeProfile.name }}</span>
+        </RouterLink>
         <RouterLink to="/dashboard" class="hidden sm:flex items-center gap-2 text-slate-700 dark:text-slate-200 hover:text-primary transition-colors">
           <div class="size-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20">
             <img v-if="authStore.photoURL" :src="authStore.photoURL" alt="Avatar" class="w-full h-full object-cover" />

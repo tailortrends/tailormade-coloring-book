@@ -27,6 +27,7 @@ const router = createRouter({
     { path: '/gift-redeemed', name: 'gift-redeemed', component: () => import('@/views/GiftRedeemedView.vue') },
     { path: '/import', name: 'import', component: () => import('@/views/ImportFromDriveView.vue') },
     { path: '/characters/add', name: 'create-character', component: () => import('@/views/CreateCharacterView.vue') },
+    { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -49,6 +50,11 @@ router.beforeEach(async (to) => {
   // Protected route + not logged in → redirect to login
   if (!to.meta.public && !authStore.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // Admin route — must be authenticated AND admin
+  if (to.meta.admin && !authStore.isAdmin) {
+    return { name: 'dashboard' }
   }
 
   // Already logged in + visiting login/signup → redirect to dashboard

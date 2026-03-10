@@ -9,6 +9,7 @@ import structlog
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limit import check_rate_limit, increment_usage, GenerationPermit
 from app.models.book import BookRequest, BookResponse
+from app.config import get_settings
 from app.services import (
     content_filter,
     scene_planner,
@@ -19,7 +20,44 @@ from app.services import (
 )
 
 logger = structlog.get_logger()
+settings = get_settings()
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
+
+
+async def _record_failed_book(book_id: str, uid: str, request: BookRequest, error: str) -> None:
+    """Save a failed book record to Firestore. Never raises."""
+    try:
+        await firebase.save_book(book_id, {
+            "book_id": book_id,
+            "uid": uid,
+            "title": request.title,
+            "theme": request.theme,
+            "age_range": request.age_range,
+            "page_count": request.page_count,
+            "status": "failed",
+            "error": error[:500],
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception as e:
+        logger.warning("failed_book_record_error", error=str(e))
+
+
+async def _record_analytics(request: BookRequest, tier: str, image_metrics, total_cost: float, failed: bool = False) -> None:
+    """Non-blocking daily analytics write. Never raises."""
+    try:
+        data: dict = {
+            "books_generated": 0 if failed else 1,
+            "pages_generated": 0 if failed else request.page_count,
+            "library_hits": image_metrics.library_hits if image_metrics else 0,
+            "library_misses": image_metrics.library_misses if image_metrics else 0,
+            "total_cost": total_cost,
+            "failures": 1 if failed else 0,
+            "themes": {request.theme: 1},
+            "tiers": {tier: 1},
+        }
+        await firebase.record_daily_analytics(data)
+    except Exception as e:
+        logger.warning("analytics_write_failed", error=str(e))
 
 
 @router.post("/generate", response_model=BookResponse)
@@ -59,6 +97,8 @@ async def generate_book(
         scenes, planning_cost = await scene_planner.plan_scenes(request)
     except Exception as e:
         logger.error("scene_planning_failed", error=str(e))
+        await _record_failed_book(book_id, uid, request, str(e))
+        await _record_analytics(request, tier, None, 0.0, failed=True)
         raise HTTPException(status_code=500, detail="Scene planning failed")
 
     # Step 3: Image generation (all scenes including cover hero)
@@ -66,6 +106,8 @@ async def generate_book(
         image_results, image_metrics = await image_gen.generate_images(scenes)
     except Exception as e:
         logger.error("image_generation_failed", error=str(e))
+        await _record_failed_book(book_id, uid, request, str(e))
+        await _record_analytics(request, tier, None, planning_cost, failed=True)
         raise HTTPException(status_code=500, detail="Image generation failed")
 
     # Step 4: Separate cover hero from interior pages
@@ -159,6 +201,8 @@ async def generate_book(
         )
     except Exception as e:
         logger.error("pdf_build_failed", error=str(e))
+        await _record_failed_book(book_id, uid, request, str(e))
+        await _record_analytics(request, tier, image_metrics, planning_cost + image_metrics.total_image_spend, failed=True)
         raise HTTPException(status_code=500, detail="PDF generation failed")
     finally:
         # Clean up temp cover file
@@ -186,10 +230,13 @@ async def generate_book(
     }
     await firebase.save_book(book_id, book_data)
 
-    # Step 9: Record generation cost
+    # Step 9: Record generation cost (with library hit/miss tracking)
     image_cost = image_metrics.total_image_spend
     total_cost = image_cost + planning_cost
     retry_count = image_metrics.total_attempts - request.page_count
+    library_hits = image_metrics.library_hits
+    library_misses = image_metrics.library_misses
+    estimated_savings = round(library_hits * settings.cost_flux_lora, 6)
     cost_data = {
         "book_id": book_id,
         "uid": uid,
@@ -202,11 +249,17 @@ async def generate_book(
         "theme": request.theme,
         "title": request.title,
         "status": "success",
+        "library_hits": library_hits,
+        "library_misses": library_misses,
+        "estimated_savings": estimated_savings,
     }
     try:
         await firebase.record_generation_cost(cost_data)
     except Exception as e:
         logger.warning("cost_recording_failed", error=str(e), book_id=book_id)
+
+    # Step 10: Record daily analytics (non-blocking)
+    await _record_analytics(request, permit.tier, image_metrics, total_cost)
 
     # Increment usage ONLY after successful generation
     await increment_usage(uid)
