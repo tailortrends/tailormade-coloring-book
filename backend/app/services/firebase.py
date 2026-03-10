@@ -112,3 +112,34 @@ async def get_all_costs(limit: int = 500) -> list[dict]:
         ),
     )
     return [doc.to_dict() for doc in docs]
+
+async def save_character(character_id: str, data: dict) -> None:
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None, lambda: db.collection("characters").document(character_id).set(data)
+    )
+    logger.info("character_saved", character_id=character_id)
+
+async def get_user_characters(uid: str, limit: int = 50) -> list[dict]:
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    docs = await loop.run_in_executor(
+        None,
+        lambda: list(
+            db.collection("characters")
+            .where("uid", "==", uid)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        ),
+    )
+    return [doc.to_dict() for doc in docs]
+
+async def delete_character(character_id: str) -> None:
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None, lambda: db.collection("characters").document(character_id).delete()
+    )
+    logger.info("character_deleted", character_id=character_id)

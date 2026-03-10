@@ -76,3 +76,43 @@ async def upload_pdf(pdf_bytes: bytes, book_id: str) -> str:
     url = f"{settings.r2_public_url}/{key}"
     logger.info("pdf_uploaded", key=key, url=url)
     return url
+
+
+async def upload_character_asset(image_bytes: bytes, character_id: str, filename: str) -> str:
+    """Upload a character asset to R2, return public URL."""
+    key = f"characters/{character_id}/{filename}"
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: _get_r2_client().put_object(
+            Bucket=settings.r2_bucket_name,
+            Key=key,
+            Body=image_bytes,
+            ContentType="image/png",
+        ),
+    )
+    url = f"{settings.r2_public_url}/{key}"
+    logger.info("character_asset_uploaded", key=key, url=url)
+    return url
+
+
+async def delete_character_assets(character_id: str) -> None:
+    """Delete all R2 objects under characters/{character_id}/."""
+    prefix = f"characters/{character_id}/"
+    loop = asyncio.get_event_loop()
+
+    def _delete():
+        client = _get_r2_client()
+        resp = client.list_objects_v2(
+            Bucket=settings.r2_bucket_name, Prefix=prefix
+        )
+        objects = resp.get("Contents", [])
+        if not objects:
+            return
+        client.delete_objects(
+            Bucket=settings.r2_bucket_name,
+            Delete={"Objects": [{"Key": o["Key"]} for o in objects]},
+        )
+
+    await loop.run_in_executor(None, _delete)
+    logger.info("character_assets_deleted", character_id=character_id, prefix=prefix)

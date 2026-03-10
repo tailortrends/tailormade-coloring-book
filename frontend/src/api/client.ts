@@ -33,8 +33,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers: customHeaders, timeout = DEFAULT_TIMEOUT_MS, signal: externalSignal, ...rest } = options
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    // Let the browser set Content-Type (with multipart boundary) for FormData
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(customHeaders as Record<string, string>),
   }
 
@@ -60,7 +63,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     response = await fetch(`${BASE_URL}${path}`, {
       ...rest,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined,
       signal: combinedController.signal,
     })
   } catch (err) {

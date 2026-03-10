@@ -26,6 +26,7 @@ const router = createRouter({
     { path: '/workspace', name: 'workspace', component: () => import('@/views/AiLineArtWorkspaceView.vue') },
     { path: '/gift-redeemed', name: 'gift-redeemed', component: () => import('@/views/GiftRedeemedView.vue') },
     { path: '/import', name: 'import', component: () => import('@/views/ImportFromDriveView.vue') },
+    { path: '/characters/add', name: 'create-character', component: () => import('@/views/CreateCharacterView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

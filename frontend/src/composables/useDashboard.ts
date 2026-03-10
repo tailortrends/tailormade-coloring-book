@@ -2,7 +2,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getFirestore, doc, getDoc } from 'firebase/firestore'
 import { useBooksStore } from '@/stores/books'
-
+import * as charactersApi from '@/api/characters'
 export interface BookRecord {
   id: string
   title: string
@@ -34,6 +34,9 @@ export interface DashboardData {
   topTheme: string | null
   topThemeCount: number
   
+  // Custom Characters
+  customCharacters: any[]
+
   // Loading state
   loading: boolean
   error: string | null
@@ -58,6 +61,7 @@ export function useDashboard() {
     recentBooks: [],
     topTheme: null,
     topThemeCount: 0,
+    customCharacters: [],
     loading: true,
     error: null
   })
@@ -152,6 +156,15 @@ export function useDashboard() {
           data.value.topTheme = topEntry[0]
           data.value.topThemeCount = topEntry[1]
         }
+      }
+
+      // 4. Fetch custom characters
+      try {
+        const chars = await charactersApi.listCharacters()
+        data.value.customCharacters = chars || []
+      } catch (e) {
+        console.error('Failed to load custom characters', e)
+        data.value.customCharacters = []
       }
       
     } catch (err: any) {

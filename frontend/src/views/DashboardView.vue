@@ -243,19 +243,31 @@ function getInitials(title: string) {
           </p>
         </div>
 
-        <!-- F) Notifications card -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 class="font-bold text-slate-900 dark:text-white mb-5 flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary">campaign</span>
-            What's New
-          </h3>
-          <div class="space-y-4">
-            <div v-for="(update, idx) in updates" :key="idx" class="flex gap-3 items-start">
-              <div class="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0"></div>
-              <div>
-                <p class="text-sm font-bold text-slate-800 dark:text-slate-200">{{ update.text }}</p>
-                <p class="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">{{ update.subtext }}</p>
+        <!-- F) Custom Characters card -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">face</span>
+              Your Characters
+            </h3>
+            <RouterLink to="/characters/add" class="text-xs font-bold text-primary hover:text-primary-dark hover:underline flex items-center">
+              Add New
+              <span class="material-symbols-outlined text-[14px]">add</span>
+            </RouterLink>
+          </div>
+          
+          <div v-if="dashboard.customCharacters.length === 0" class="text-center py-6 text-slate-500 text-sm">
+            <p>No characters yet.</p>
+            <p>Add some to feature them in your books!</p>
+          </div>
+          
+          <div v-else class="grid grid-cols-2 gap-3">
+            <div v-for="char in dashboard.customCharacters.slice(0, 4)" :key="char.character_id" class="flex flex-col gap-1.5 items-center">
+              <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-700">
+                <img :src="char.sketch_url || char.original_url" class="w-full h-full object-cover" />
               </div>
+              <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate w-full text-center" :title="char.name">{{ char.name }}</span>
+              <span v-if="char.relationship" class="text-[10px] font-medium text-slate-400 capitalize">{{ char.relationship }}</span>
             </div>
           </div>
         </div>
