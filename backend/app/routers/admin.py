@@ -1,4 +1,6 @@
+import asyncio
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from collections import Counter
 import structlog
 
@@ -122,3 +124,41 @@ async def get_costs(
 ):
     """Return most expensive books sorted by total_cost descending."""
     return await firebase.get_books_by_cost(limit)
+
+
+# ── Stripe Mode Toggle ──────────────────────────────────────────────────────
+
+class StripeModeRequest(BaseModel):
+    mode: str  # "test" or "live"
+
+
+@router.get("/stripe-mode")
+async def get_stripe_mode(user: dict = Depends(get_admin_user)):
+    """Return the current Stripe mode (test/live)."""
+    from app.routers.stripe_router import _get_stripe_mode
+    mode = _get_stripe_mode()
+    return {"mode": mode}
+
+
+@router.post("/stripe-mode")
+async def set_stripe_mode(
+    body: StripeModeRequest,
+    user: dict = Depends(get_admin_user),
+):
+    """Toggle Stripe between test and live mode. Persisted in Firestore."""
+    if body.mode not in ("test", "live"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Mode must be 'test' or 'live'")
+
+    from firebase_admin import firestore as fs
+    db = fs.client()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: db.collection("settings").document("stripe").set(
+            {"mode": body.mode}, merge=True
+        ),
+    )
+
+    logger.info("stripe_mode_changed", mode=body.mode, admin_uid=user["uid"])
+    return {"mode": body.mode, "status": "ok"}

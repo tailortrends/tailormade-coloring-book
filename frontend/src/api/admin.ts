@@ -72,3 +72,11 @@ export function getFailures(limit = 20): Promise<FailedBook[]> {
 export function getCosts(limit = 50): Promise<CostEntry[]> {
   return api.get<CostEntry[]>(`/api/v1/admin/costs?limit=${limit}`)
 }
+
+export function getStripeMode(): Promise<{ mode: string }> {
+  return api.get<{ mode: string }>('/api/v1/admin/stripe-mode')
+}
+
+export function setStripeMode(mode: 'test' | 'live'): Promise<{ mode: string; status: string }> {
+  return api.post<{ mode: string; status: string }>('/api/v1/admin/stripe-mode', { mode })
+}

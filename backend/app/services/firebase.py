@@ -291,6 +291,56 @@ async def get_failed_books(limit: int = 20) -> list[dict]:
     return await loop.run_in_executor(None, _query)
 
 
+async def update_user_stripe(
+    uid: str,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    subscription_tier: str | None = None,
+    subscription_active: bool | None = None,
+) -> None:
+    """Update Stripe-related fields on a user doc (merge=True)."""
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+
+    update: dict = {}
+    if stripe_customer_id is not None:
+        update["stripe_customer_id"] = stripe_customer_id
+    if stripe_subscription_id is not None:
+        update["stripe_subscription_id"] = stripe_subscription_id
+    if subscription_tier is not None:
+        update["subscription_tier"] = subscription_tier
+    if subscription_active is not None:
+        update["subscription_active"] = subscription_active
+
+    if update:
+        await loop.run_in_executor(
+            None,
+            lambda: db.collection("users").document(uid).set(update, merge=True),
+        )
+        logger.info("user_stripe_updated", uid=uid, fields=list(update.keys()))
+
+
+async def get_user_stripe_info(uid: str) -> dict | None:
+    """Return Stripe-related fields from a user doc."""
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    doc = await loop.run_in_executor(
+        None, lambda: db.collection("users").document(uid).get()
+    )
+    if not doc.exists:
+        return None
+    data = doc.to_dict()
+    return {
+        "stripe_customer_id": data.get("stripe_customer_id"),
+        "stripe_subscription_id": data.get("stripe_subscription_id"),
+        "subscription_tier": data.get("subscription_tier", "free"),
+        "subscription_active": data.get("subscription_active", False),
+        "one_time_credits": data.get("one_time_credits", 0),
+        "books_generated_this_month": data.get("books_generated_this_month", 0),
+        "books_generated_total": data.get("books_generated_total", 0),
+    }
+
+
 async def get_books_by_cost(limit: int = 50) -> list[dict]:
     """Return most expensive books by total_cost descending."""
     db = firestore.client()

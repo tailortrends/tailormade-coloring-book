@@ -6,6 +6,8 @@ import {
   getDailyAnalytics,
   getFailures,
   getCosts,
+  getStripeMode,
+  setStripeMode,
   type AdminStats,
   type DailyAnalytics,
   type FailedBook,
@@ -47,6 +49,26 @@ const stats = ref<AdminStats | null>(null)
 const daily = ref<DailyAnalytics[]>([])
 const failures = ref<FailedBook[]>([])
 const costEntries = ref<CostEntry[]>([])
+
+// Stripe mode toggle
+const stripeMode = ref<'test' | 'live'>('test')
+const stripeModeLoading = ref(false)
+
+async function toggleStripeMode() {
+  const newMode = stripeMode.value === 'test' ? 'live' : 'test'
+  if (newMode === 'live' && !confirm('Switch to LIVE Stripe mode? Real charges will be processed.')) {
+    return
+  }
+  stripeModeLoading.value = true
+  try {
+    const result = await setStripeMode(newMode)
+    stripeMode.value = result.mode as 'test' | 'live'
+  } catch (e) {
+    console.error('Failed to toggle stripe mode', e)
+  } finally {
+    stripeModeLoading.value = false
+  }
+}
 
 // Chart refs
 const booksChartCanvas = ref<HTMLCanvasElement | null>(null)
@@ -203,16 +225,18 @@ function renderCharts() {
 
 onMounted(async () => {
   try {
-    const [s, d, f, c] = await Promise.all([
+    const [s, d, f, c, sm] = await Promise.all([
       getAdminStats(),
       getDailyAnalytics(30),
       getFailures(20),
       getCosts(50),
+      getStripeMode().catch(() => ({ mode: 'test' })),
     ])
     stats.value = s
     daily.value = d
     failures.value = f
     costEntries.value = c
+    stripeMode.value = sm.mode as 'test' | 'live'
 
     // Render charts after data loaded (nextTick ensures canvas is mounted)
     requestAnimationFrame(renderCharts)
@@ -231,13 +255,39 @@ onUnmounted(destroyCharts)
     <AppHeader />
 
     <main class="flex-1 py-8 px-4 sm:px-8 max-w-7xl mx-auto w-full">
-      <div class="flex items-center gap-3 mb-8">
-        <div class="size-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
-          <span class="material-symbols-outlined">admin_panel_settings</span>
+      <div class="flex items-center justify-between gap-3 mb-8">
+        <div class="flex items-center gap-3">
+          <div class="size-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
+            <span class="material-symbols-outlined">admin_panel_settings</span>
+          </div>
+          <div>
+            <h1 class="text-3xl font-extrabold tracking-tight">Admin Dashboard</h1>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Internal analytics &amp; cost tracking</p>
+          </div>
         </div>
-        <div>
-          <h1 class="text-3xl font-extrabold tracking-tight">Admin Dashboard</h1>
-          <p class="text-sm text-slate-500 dark:text-slate-400">Internal analytics &amp; cost tracking</p>
+
+        <!-- Stripe Mode Toggle -->
+        <div class="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <span class="material-symbols-outlined text-lg" :class="stripeMode === 'live' ? 'text-green-500' : 'text-amber-500'">
+            {{ stripeMode === 'live' ? 'verified' : 'science' }}
+          </span>
+          <div class="flex flex-col">
+            <span class="text-xs font-bold uppercase tracking-wider" :class="stripeMode === 'live' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+              Stripe {{ stripeMode }}
+            </span>
+            <span class="text-[10px] text-slate-400">{{ stripeMode === 'live' ? 'Real charges' : 'No charges' }}</span>
+          </div>
+          <button
+            @click="toggleStripeMode"
+            :disabled="stripeModeLoading"
+            class="relative ml-2 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50"
+            :class="stripeMode === 'live' ? 'bg-green-500 focus:ring-green-500' : 'bg-slate-300 dark:bg-slate-600 focus:ring-amber-500'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 size-5 bg-white rounded-full shadow transition-transform duration-200"
+              :class="stripeMode === 'live' ? 'translate-x-6' : 'translate-x-0'"
+            />
+          </button>
         </div>
       </div>
 

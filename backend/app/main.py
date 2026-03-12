@@ -93,13 +93,14 @@ app.add_middleware(
         "http://localhost:5173",
         "https://tailormade-coloring-book.vercel.app",
         "https://tailormadecoloringbook.vercel.app",
+        "https://tailormadecoloringbook.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from app.routers import auth, books, admin, library, characters, profiles  # noqa: E402
+from app.routers import auth, books, admin, library, characters, profiles, stripe_router  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(books.router)
@@ -107,6 +108,7 @@ app.include_router(admin.router)
 app.include_router(library.router)
 app.include_router(characters.router)
 app.include_router(profiles.router)
+app.include_router(stripe_router.router)
 
 
 @app.get("/health")

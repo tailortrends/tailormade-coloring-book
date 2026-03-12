@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     admin_uids: str = ""  # Comma-separated Firebase UIDs
     admin_secret_token: str = ""  # X-Admin-Token header value
 
+    # Stripe — dual mode (admin toggleable)
+    stripe_mode: str = "test"  # "test" or "live" — default from env, overridable via Firestore
+    stripe_live_secret_key: str = ""
+    stripe_live_publishable_key: str = ""
+    stripe_test_secret_key: str = ""
+    stripe_test_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_family_price_id: str = ""
+    stripe_teacher_price_id: str = ""
+    stripe_single_price_id: str = ""
+    stripe_portal_return_url: str = ""
+
     # Sentry
     sentry_dsn: str = ""  # Backend Sentry DSN (from env)
 
