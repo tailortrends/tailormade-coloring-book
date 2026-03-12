@@ -84,8 +84,9 @@ async def get_characters(user: dict = Depends(get_current_user)):
         characters = await firebase.get_user_characters(user["uid"])
         return characters
     except Exception as e:
-        logger.error("character_fetch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch characters")
+        logger.error("character_fetch_failed", uid=user["uid"], error=str(e), error_type=type(e).__name__)
+        # Return empty list so dashboard still loads (likely missing Firestore composite index)
+        return []
 
 @router.delete("/{character_id}", status_code=204)
 async def delete_character(character_id: str, user: dict = Depends(get_current_user)):

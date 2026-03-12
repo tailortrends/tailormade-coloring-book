@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import firebase_admin
 from firebase_admin import credentials
 import structlog
@@ -87,18 +88,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://tailormade-coloring-book.vercel.app",
+    "https://tailormadecoloringbook.vercel.app",
+    "https://tailormadecoloringbook.app",
+    "https://www.tailormadecoloringbook.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://tailormade-coloring-book.vercel.app",
-        "https://tailormadecoloringbook.vercel.app",
-        "https://tailormadecoloringbook.app",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch unhandled exceptions and return JSON with CORS headers.
+    Without this, 500s bypass CORSMiddleware and the browser blocks the response."""
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in ALLOWED_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=headers,
+    )
+
 
 from app.routers import auth, books, admin, library, characters, profiles, stripe_router  # noqa: E402
 

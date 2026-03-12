@@ -129,8 +129,12 @@ async def create_profile(
 
 @router.get("/", response_model=list[ProfileResponse])
 async def list_profiles(user: dict = Depends(get_current_user)):
-    profiles = await firebase.get_user_profiles(user["uid"])
-    return [ProfileResponse(**p) for p in profiles]
+    try:
+        profiles = await firebase.get_user_profiles(user["uid"])
+        return [ProfileResponse(**p) for p in profiles]
+    except Exception as e:
+        logger.error("profiles_fetch_failed", uid=user["uid"], error=str(e), error_type=type(e).__name__)
+        return []
 
 
 @router.get("/{profile_id}", response_model=ProfileResponse)

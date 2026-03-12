@@ -53,6 +53,13 @@ def _get_stripe_keys() -> tuple[str, str]:
 def _get_stripe():
     """Configure and return the stripe module with the correct API key."""
     secret_key, _ = _get_stripe_keys()
+    if not secret_key:
+        mode = _get_stripe_mode()
+        logger.error("stripe_no_api_key", mode=mode)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Stripe {mode} secret key is not configured",
+        )
     stripe.api_key = secret_key
     return stripe
 

@@ -13,28 +13,35 @@ settings = get_settings()
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
+EMPTY_STATS = {
+    "total_books": 0,
+    "books_this_month": 0,
+    "avg_cost_per_book": 0.0,
+    "total_spend": 0.0,
+    "total_image_spend": 0.0,
+    "total_planning_spend": 0.0,
+    "total_retries": 0,
+    "library_hit_rate": 0.0,
+    "top_themes": [],
+    "books_by_tier": {},
+    "most_expensive_book": None,
+}
+
+
 @router.get("/stats")
 async def get_stats(user: dict = Depends(get_admin_user)):
     """
     Admin dashboard: aggregated cost metrics from the 'costs' collection.
     Expanded with monthly stats, library hit rate, top themes, and tier breakdown.
     """
-    costs = await firebase.get_all_costs(limit=2000)
+    try:
+        costs = await firebase.get_all_costs(limit=2000)
+    except Exception as e:
+        logger.error("admin_stats_fetch_failed", error=str(e), error_type=type(e).__name__)
+        return EMPTY_STATS
 
     if not costs:
-        return {
-            "total_books": 0,
-            "books_this_month": 0,
-            "avg_cost_per_book": 0.0,
-            "total_spend": 0.0,
-            "total_image_spend": 0.0,
-            "total_planning_spend": 0.0,
-            "total_retries": 0,
-            "library_hit_rate": 0.0,
-            "top_themes": [],
-            "books_by_tier": {},
-            "most_expensive_book": None,
-        }
+        return EMPTY_STATS
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -105,7 +112,11 @@ async def get_daily(
     user: dict = Depends(get_admin_user),
 ):
     """Return the last N days of daily analytics for charting."""
-    return await firebase.get_daily_analytics(days)
+    try:
+        return await firebase.get_daily_analytics(days)
+    except Exception as e:
+        logger.error("admin_daily_fetch_failed", error=str(e), error_type=type(e).__name__)
+        return []
 
 
 @router.get("/failures")
@@ -114,7 +125,11 @@ async def get_failures(
     user: dict = Depends(get_admin_user),
 ):
     """Return the most recent failed book generations."""
-    return await firebase.get_failed_books(limit)
+    try:
+        return await firebase.get_failed_books(limit)
+    except Exception as e:
+        logger.error("admin_failures_fetch_failed", error=str(e), error_type=type(e).__name__)
+        return []
 
 
 @router.get("/costs")
@@ -123,7 +138,11 @@ async def get_costs(
     user: dict = Depends(get_admin_user),
 ):
     """Return most expensive books sorted by total_cost descending."""
-    return await firebase.get_books_by_cost(limit)
+    try:
+        return await firebase.get_books_by_cost(limit)
+    except Exception as e:
+        logger.error("admin_costs_fetch_failed", error=str(e), error_type=type(e).__name__)
+        return []
 
 
 # ── Stripe Mode Toggle ──────────────────────────────────────────────────────
