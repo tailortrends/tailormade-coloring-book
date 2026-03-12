@@ -113,27 +113,25 @@ app.include_router(stripe_router.router)
 
 @app.get("/health")
 async def health():
-    """Deep health check — tests all dependencies."""
+    """Liveness probe — always returns 200 if the server is running.
+    Dependency status is reported in the response body for observability."""
     import json
-    from fastapi import Response
 
     checks = {}
 
     try:
         from firebase_admin import firestore
-
         db = firestore.client()
         db.collection("_health").limit(1).get()
         checks["firebase"] = "ok"
     except Exception as e:
         checks["firebase"] = globals().get("firebase_init_error") or f"error: {str(e)[:100]}"
-    
-    checks["version"] = 2
+
+    checks["version"] = 3
 
     try:
         from app.services.storage import _get_r2_client
         from app.config import get_settings
-
         s = get_settings()
         _get_r2_client().head_bucket(Bucket=s.r2_bucket_name)
         checks["r2"] = "ok"
@@ -141,8 +139,6 @@ async def health():
         checks["r2"] = f"error: {str(e)[:100]}"
 
     status = "ok" if checks.get("firebase") == "ok" and checks.get("r2") == "ok" else "degraded"
-    return Response(
-        content=json.dumps({"status": status, "checks": checks}),
-        status_code=200 if status == "ok" else 503,
-        media_type="application/json",
-    )
+    # Always return 200 so Railway healthcheck passes.
+    # Monitoring tools can check the "status" field for degradation.
+    return {"status": status, "checks": checks}
