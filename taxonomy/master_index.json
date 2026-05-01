@@ -35,10 +35,10 @@
     "lora_training_cost": 3.00,
     "total_launch_cost": 19.42
   },
-  "image_id_format": "{theme}_{subject}_{complexity}_{variant}",
-  "image_id_example": "animals_dog_simple_001",
-  "r2_path_format": "library/{theme}/{complexity}/{image_id}.png",
-  "r2_path_example": "library/animals/simple/animals_dog_simple_001.png",
+  "image_id_format": "{subject_id}_{tier}_v{variation_index}",
+  "image_id_example": "animals_dog_simple_v1",
+  "r2_path_format": "library/{subject_id}/{tier}/{subject_id}_{tier}_v{variation_index}.png",
+  "r2_path_example": "library/animals_dog/simple/animals_dog_simple_v1.png",
   "launch_priority": {
     "phase_1": ["animals","dinosaurs","space","unicorns"],
     "phase_2": ["princesses","vehicles","ocean","farm"],

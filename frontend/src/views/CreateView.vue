@@ -5,6 +5,7 @@ import UpgradeCTA from '@/components/UpgradeCTA.vue'
 import { RouterLink, onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useBooksStore } from '@/stores/books'
 import { useProfilesStore } from '@/stores/profiles'
+import { useAuthStore } from '@/stores/auth'
 import { useFormValidation } from '@/composables/useFormValidation'
 import { useBookQuota } from '@/composables/useBookQuota'
 import { bookGenerateSchema } from '@/validation/schemas'
@@ -12,9 +13,44 @@ import type { Book } from '@/types/book'
 
 const store = useBooksStore()
 const profilesStore = useProfilesStore()
+const authStore = useAuthStore()
 const route = useRoute()
 const { errors, validate, clearErrors } = useFormValidation(bookGenerateSchema)
-const { isAtLimit } = useBookQuota()
+const {
+  isAtLimit,
+  booksUsed,
+  booksLimit,
+  percentUsed,
+  loading: quotaLoading,
+} = useBookQuota()
+
+// Subscription tiers reset on the 1st of the next month; free/single tiers don't.
+const isSubscription = computed(
+  () =>
+    authStore.subscriptionActive &&
+    (authStore.tier === 'family' || authStore.tier === 'teacher'),
+)
+
+const quotaLabel = computed(() =>
+  isSubscription.value ? 'Monthly Quota' : 'Your Quota',
+)
+
+const resetLabel = computed(() => {
+  if (isSubscription.value) {
+    const now = new Date()
+    const nextReset = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const days = Math.max(
+      0,
+      Math.ceil((nextReset.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+    )
+    return `Refreshes in ${days} day${days === 1 ? '' : 's'}`
+  }
+  if (authStore.tier === 'single' || authStore.creditsRemaining > 0) {
+    const c = authStore.creditsRemaining
+    return `${c} credit${c === 1 ? '' : 's'} left`
+  }
+  return 'Free tier'
+})
 
 // Cancel generation on navigation or unmount
 onBeforeRouteLeave(() => {
@@ -108,18 +144,21 @@ async function handleGenerate() {
                 <div class="bg-primary/10 p-1.5 rounded-lg text-primary">
                   <span class="material-symbols-outlined text-xl">auto_stories</span>
                 </div>
-                <p class="text-slate-900 dark:text-white text-sm font-bold">Monthly Quota</p>
+                <p class="text-slate-900 dark:text-white text-sm font-bold">{{ quotaLabel }}</p>
               </div>
-              <p class="text-primary font-black text-lg">1<span class="text-slate-400 text-sm font-medium">/2</span></p>
+              <p class="text-primary font-black text-lg">
+                <span v-if="quotaLoading" class="text-slate-400 text-sm font-medium">Loading…</span>
+                <template v-else>{{ booksUsed }}<span class="text-slate-400 text-sm font-medium">/{{ booksLimit }}</span></template>
+              </p>
             </div>
 
             <div class="relative z-10">
               <div class="flex justify-between text-xs mb-1.5 font-semibold">
-                <span class="text-slate-700 dark:text-slate-300">50% Used</span>
-                <span class="text-slate-400">Refreshes in 12 days</span>
+                <span class="text-slate-700 dark:text-slate-300">{{ percentUsed }}% Used</span>
+                <span class="text-slate-400">{{ resetLabel }}</span>
               </div>
               <div class="rounded-full bg-slate-200 dark:bg-slate-700 h-4 w-full overflow-hidden border border-slate-100 dark:border-slate-600">
-                <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500 shadow-[0_0_10px_rgba(139,92,246,0.5)]" style="width: 50%;"></div>
+                <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500 shadow-[0_0_10px_rgba(139,92,246,0.5)]" :style="{ width: `${percentUsed}%` }"></div>
               </div>
             </div>
 
