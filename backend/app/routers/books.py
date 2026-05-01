@@ -101,9 +101,30 @@ async def generate_book(
         await _record_analytics(request, tier, None, 0.0, failed=True)
         raise HTTPException(status_code=500, detail="Scene planning failed")
 
+    # Step 2b: Fetch the user's most recent character for visual reference.
+    # Failure here must not block generation — books work fine without a reference.
+    character_image_url: str | None = None
+    try:
+        characters = await firebase.get_user_characters(uid, limit=1)
+        if characters:
+            char = characters[0]
+            character_image_url = char.get("sketch_url") or char.get("original_url") or None
+            logger.info("character_reference_attached",
+                        uid=uid, book_id=book_id,
+                        character_id=char.get("character_id"),
+                        has_url=bool(character_image_url))
+    except Exception as e:
+        logger.warning("character_fetch_failed_for_book",
+                       uid=uid, book_id=book_id, error=str(e))
+        character_image_url = None
+
     # Step 3: Image generation (all scenes including cover hero)
     try:
-        image_results, image_metrics = await image_gen.generate_images(scenes)
+        image_results, image_metrics = await image_gen.generate_images(
+            scenes,
+            character_image_url=character_image_url,
+            age_range=request.age_range,
+        )
     except Exception as e:
         logger.error("image_generation_failed", error=str(e))
         await _record_failed_book(book_id, uid, request, str(e))

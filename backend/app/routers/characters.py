@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from datetime import datetime, timezone
 import uuid
+import httpx
 import structlog
 from app.middleware.auth import get_current_user
-from app.services import sketch_converter, storage, firebase
+from app.services import image_gen, storage, firebase
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1/characters", tags=["characters"])
@@ -41,21 +42,29 @@ async def create_character(
         logger.error("character_image_read_failed", error=str(e))
         raise HTTPException(status_code=400, detail="Failed to read the uploaded image")
 
-    # Generate sketch from bytes
-    try:
-        sketch_bytes = sketch_converter.image_bytes_to_sketch_bytes(input_bytes)
-    except Exception as e:
-        logger.error("character_sketch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to process sketch")
-
-    # Upload both images to R2
+    # Upload the original photo to R2 first — Kontext needs a reachable URL.
     try:
         original_ext = image.filename.split(".")[-1] if "." in image.filename else "png"
-        original_url = await storage.upload_character_asset(input_bytes, character_id, f"original.{original_ext}")
-        sketch_url = await storage.upload_character_asset(sketch_bytes, character_id, "sketch.png")
+        original_url = await storage.upload_character_asset(
+            input_bytes, character_id, f"original.{original_ext}"
+        )
     except Exception as e:
         logger.error("character_upload_failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to upload assets")
+        raise HTTPException(status_code=500, detail="Failed to upload original photo")
+
+    # Convert the photo into a coloring-book character sketch via Kontext.
+    try:
+        kontext_sketch_url = await image_gen.generate_character_sketch(original_url)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(kontext_sketch_url)
+            resp.raise_for_status()
+            sketch_bytes = resp.content
+        sketch_url = await storage.upload_character_asset(
+            sketch_bytes, character_id, "sketch.png"
+        )
+    except Exception as e:
+        logger.error("character_sketch_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to generate character sketch")
 
     # Save to Firestore
     character_data = {

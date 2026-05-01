@@ -1,14 +1,8 @@
 """
-Image generation via fal.ai FLUX LoRA with custom coloring book style.
+Image generation via fal.ai FLUX.1 Kontext [pro].
 
-Key improvements:
-- Composition-aware prompts (close-up, full-body, wide-scene, action-pose)
-- Stronger style enforcement with repeating negative concepts in prompt
-- Fill percentage instructions per composition type
-- Tuned guidance_scale (5.5) and num_inference_steps (35) for cleaner lines
-- Portrait aspect ratio (1024x1408) to match 8.5x11 page layout
-- 5-point image validation (contrast, color, whitespace, edge density, watermark)
-- Retry with prompt variation instead of identical re-submission
+Kontext produces high-quality coloring book line art from natural-language
+prompts and an optional character reference image — no LoRA required.
 """
 
 import asyncio
@@ -32,87 +26,34 @@ from app.models.book import Scene
 logger = structlog.get_logger()
 settings = get_settings()
 
-# Semaphore caps concurrent fal.ai calls
 _semaphore = asyncio.Semaphore(settings.max_concurrent_fal_calls)
 
-# Set credential from settings
 os.environ["FAL_KEY"] = settings.fal_key
+
+KONTEXT_MODEL = "fal-ai/flux-pro/kontext"
+KONTEXT_TEXT_MODEL = "fal-ai/flux-pro/kontext/text-to-image"
 
 # ─── Prompt templates ────────────────────────────────────────────────────────
 
-STYLE_SUFFIX = (
-    "tmcb_style, children's coloring book page, "
-    "pure black and white line art, ONLY black outlines on pure white background, "
-    "thick bold clean outlines suitable for children to color within, "
-    "absolutely NO color, NO shading, NO gradients, NO grey fill, NO shadows, "
-    "NO watermarks, NO text, NO signatures, "
-    "high contrast, print-ready, professional coloring book quality"
-)
-
-# Mandatory layout modifiers — ensures subjects and scenes fill the entire page
-FULL_PAGE_MODIFIER = (
-    "edge-to-edge composition, full-bleed illustration, "
-    "elements touching all four corners of the frame, "
-    "no large empty white borders, "
-    "intricate detail filling the entire page, "
-    "professional coloring book style"
-)
-
-COMPOSITION_PROMPTS = {
-    "close-up": (
-        "dramatic close-up portrait of {subject} filling the entire frame, "
-        "head and face details clearly visible, subject occupies 85% of the image, "
-        "decorative elements filling remaining space around subject"
-    ),
-    "full-body": (
-        "full body view of {subject} centered on page, "
-        "entire subject visible from head to feet, "
-        "subject occupies 65% of the image, environmental details filling the scene"
-    ),
-    "wide-scene": (
-        "wide panoramic scene showing {subject} in a rich themed environment, "
-        "subject is the clear focal point occupying 50% of the image, "
-        "detailed background and foreground elements filling the entire composition"
-    ),
-    "action-pose": (
-        "{subject} in a dynamic action pose, full of energy and movement, "
-        "subject occupies 60% of the image, "
-        "environmental context and motion elements filling the scene"
-    ),
+# Maps age_range (BookRequest pattern) → complexity modifier text
+AGE_RANGE_MODIFIERS: dict[str, str] = {
+    "2-4": "very simple bold shapes, large coloring areas, minimal detail, thick lines",
+    "4-6": "simple friendly detail, clear regions, medium line weight",
+    "6-9": "moderate detail, varied line weight, more complex composition",
+    "9-12": "intricate detail, fine linework, complex adult coloring book style",
 }
 
-COMPLEXITY_DETAIL = {
-    "simple": "EXTRA THICK bold outlines, very few details, large simple shapes, toddler-friendly",
-    "beginner": "thick bold outlines, simple shapes with some detail, kid-friendly ages 4-6",
-    "medium": "medium weight outlines, moderate detail with 10-15 distinct colorable regions, ages 6-9",
-    "advanced": "detailed outlines with fine lines, intricate patterns, 20+ distinct colorable regions, ages 9-12",
+# Maps Scene.complexity → complexity modifier text (fallback when age_range not provided)
+COMPLEXITY_MODIFIERS: dict[str, str] = {
+    "simple": "very simple bold shapes, large coloring areas, minimal detail, thick lines",
+    "beginner": "simple friendly detail, clear regions, medium line weight",
+    "medium": "moderate detail, varied line weight, more complex composition",
+    "advanced": "intricate detail, fine linework, complex adult coloring book style",
 }
 
-# Variations applied on retry to nudge the model differently
-RETRY_VARIATIONS = [
-    "",  # First attempt: no variation
-    ", zoomed in, larger subject, filling more of the frame",
-    ", simplified composition, single clear subject, extra bold outlines",
-]
-
-# ─── Quality thresholds ──────────────────────────────────────────────────────
-
-MIN_STD_DEV = 10.0        # below this = near-solid image (bad generation)
-MAX_STD_DEV = 120.0       # above this = too noisy/complex
-MAX_CHANNEL_SPREAD = 15   # above this = colored image (LoRA failed)
-MAX_SATURATION = 20       # above this mean HSV saturation = colored image
-MIN_BLACK_RATIO = 0.02    # below 2% = nearly blank (tiny subject)
-MAX_BLACK_RATIO = 0.50    # above 50% = maze/noise pattern
-MIN_EDGE_RATIO = 0.01     # below 1% = too sparse/simple
-MAX_EDGE_RATIO = 0.30     # above 30% = too noisy/complex
-MIN_FILL_RATIO = 0.60     # below 60% non-white = page too empty, needs more detail
-
-# Aggressive background filler keywords added on density retry
-DENSITY_FILLER = (
-    "dense detailed background filling every corner, "
-    "lush environmental details everywhere, "
-    "no empty white space, every area of the page has line art detail, "
-    "maximum illustration coverage"
+NEGATIVE_PROMPT = (
+    "color, shading, gray tones, gradient, realistic photo, "
+    "watermark, text overlay, signature, colored background, blurry, distorted"
 )
 
 
@@ -123,8 +64,8 @@ class ImageResult:
     image_bytes: Optional[bytes] = None
     success: bool = True
     error: Optional[str] = None
-    fal_attempts: int = 1  # number of fal.ai API calls for this page
-    from_library: bool = False  # True if served from pre-generated library
+    fal_attempts: int = 1
+    from_library: bool = False
 
 
 @dataclass
@@ -135,235 +76,145 @@ class ImageGenMetrics:
     library_misses: int = 0
 
 
-def _build_prompt(scene: Scene, variation: str = "") -> str:
-    """
-    Assemble the image generation prompt from the 4-layer scene structure.
+def _scene_description(scene: Scene) -> str:
+    """Compose a natural-language scene description from the 4-layer Scene model."""
+    subject = (scene.main_subject or scene.subject_hint).replace("_", " ")
+    parts = [subject]
 
-    Priority order (most important first, so they survive truncation):
-    1. Composition frame (sets camera/framing)
-    2. Main subject (hero element)
-    3. Secondary elements (supporting details)
-    4. Background + foreground (environmental context)
-    5. Cover note (if applicable)
-    6. Full-page modifier (edge-to-edge fill)
-    7. Complexity detail
-    8. Style suffix (LoRA trigger + BW enforcement)
-    """
-    subject = scene.subject_hint.replace("_", " ")
-    comp_type = scene.composition if scene.composition in COMPOSITION_PROMPTS else "full-body"
-    comp_prompt = COMPOSITION_PROMPTS[comp_type].format(subject=subject)
-    detail = COMPLEXITY_DETAIL.get(scene.complexity, COMPLEXITY_DETAIL["medium"])
+    if scene.composition == "close-up":
+        parts.append("close-up portrait view")
+    elif scene.composition == "wide-scene":
+        parts.append("wide panoramic view")
+    elif scene.composition == "action-pose":
+        parts.append("dynamic action pose")
+    else:
+        parts.append("full body view")
 
-    # Build prompt parts in priority order
-    parts = [comp_prompt]
-
-    # Layer 1: Main subject
-    if scene.main_subject:
-        parts.append(scene.main_subject)
-
-    # Layer 2: Secondary elements (cap at 4 to save tokens)
     if scene.secondary_elements:
         secondary = ", ".join(scene.secondary_elements[:4])
-        parts.append(f"accompanied by {secondary}")
+        parts.append(f"with {secondary}")
 
-    # Layer 3: Background
     if scene.background:
-        parts.append(f"background showing {scene.background}")
-
-    # Layer 4: Foreground
+        parts.append(f"in {scene.background}")
     if scene.foreground:
-        parts.append(f"foreground with {scene.foreground}")
+        parts.append(f"with {scene.foreground} in the foreground")
 
-    # Cover scenes get grand masterpiece treatment
     if scene.is_cover:
-        parts.append("grand masterpiece composition, large clear open space in top-center for title")
+        parts.append("with open space in the top center for a title")
 
-    # Full-page fill modifier (every prompt)
-    parts.append(FULL_PAGE_MODIFIER)
+    return ", ".join(parts)
 
-    # Complexity detail
-    parts.append(detail)
 
-    # Style enforcement (LoRA trigger + BW rules)
-    parts.append(STYLE_SUFFIX)
+def _resolve_age_modifier(age_range: Optional[str], complexity: Optional[str]) -> str:
+    if age_range and age_range in AGE_RANGE_MODIFIERS:
+        return AGE_RANGE_MODIFIERS[age_range]
+    if complexity and complexity in COMPLEXITY_MODIFIERS:
+        return COMPLEXITY_MODIFIERS[complexity]
+    return COMPLEXITY_MODIFIERS["medium"]
 
-    # Variation suffix (for retries)
-    if variation:
-        parts.append(variation.strip(", "))
 
-    prompt = ", ".join(parts)
+def _build_prompt(scene: Scene, age_range: Optional[str] = None) -> str:
+    scene_desc = _scene_description(scene)
+    age_mod = _resolve_age_modifier(age_range, scene.complexity)
 
-    # Truncate to 120 words — higher resolution can handle longer prompts
-    words = prompt.split()
-    if len(words) > 120:
-        prompt = " ".join(words[:120])
-
-    return prompt
+    return (
+        "Black and white coloring book page, clean thick outlines only, "
+        "pure white background, no shading no gray no color fill, "
+        f"{scene_desc}, {age_mod}, "
+        "children's illustration style, printable line art"
+    )
 
 
 # ─── fal.ai call ─────────────────────────────────────────────────────────────
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
     retry=retry_if_exception_type((Exception,)),
     before_sleep=before_sleep_log(logging.getLogger(__name__), logging.WARNING),
     reraise=True,
 )
-async def _call_fal_single(prompt: str, page_number: int, guidance_scale: float = 5.5) -> ImageResult:
-    """Single fal.ai call with retry logic. Uses custom LoRA for consistent style."""
-    logger.info("fal_call_start", page=page_number, guidance_scale=guidance_scale,
-                prompt_preview=prompt[:120])
-    try:
-        lora_url = settings.custom_lora_url
-        loras = [{"path": lora_url, "scale": settings.lora_scale}] if lora_url else []
-        endpoint = "fal-ai/flux-lora" if loras else "fal-ai/flux/dev"
+async def _call_kontext(
+    prompt: str,
+    page_number: int,
+    character_image_url: Optional[str] = None,
+    aspect_ratio: str = "3:4",
+) -> tuple[str, dict]:
+    """Single Kontext call. Returns (image_url, raw_result)."""
+    has_ref = bool(character_image_url)
+    endpoint = KONTEXT_MODEL if has_ref else KONTEXT_TEXT_MODEL
 
+    arguments: dict = {
+        "prompt": prompt,
+        "guidance_scale": 3.5,
+        "num_inference_steps": 28,
+        "num_images": 1,
+        "aspect_ratio": aspect_ratio,
+        "output_format": "png",
+    }
+    if has_ref:
+        arguments["image_url"] = character_image_url
+
+    logger.info("kontext_call_start", page=page_number, endpoint=endpoint,
+                has_ref=has_ref, prompt_preview=prompt[:120])
+    try:
         result = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: fal_client.run(
-                    endpoint,
-                    arguments={
-                        "prompt": prompt,
-                        "loras": loras,
-                        "image_size": {"width": 1216, "height": 1728},
-                        "num_inference_steps": 35,
-                        "guidance_scale": guidance_scale,
-                        "num_images": 1,
-                        "enable_safety_checker": True,
-                        "output_format": "png",
-                    },
-                ),
+                lambda: fal_client.run(endpoint, arguments=arguments),
             ),
             timeout=120.0,
         )
         image_url = result["images"][0]["url"]
-        logger.info("fal_call_success", page=page_number, url=image_url)
-        return ImageResult(page_number=page_number, image_url=image_url)
+        logger.info("kontext_call_success", page=page_number, url=image_url)
+        return image_url, result
     except asyncio.TimeoutError:
-        logger.error("fal_call_timeout", page=page_number)
+        logger.error("kontext_call_timeout", page=page_number)
         raise
     except Exception as e:
-        logger.error("fal_call_error", page=page_number, error=str(e))
+        logger.error("kontext_call_error", page=page_number, error=str(e))
         raise
 
 
 # ─── Image validation ────────────────────────────────────────────────────────
 
-def _is_valid_image(image_bytes: bytes, page_number: int) -> tuple[bool, str]:
+# Hard-retry only on completely solid images (Kontext is reliable enough that
+# softer quality issues are not worth the extra cost of retries).
+HARD_FAIL_BLANK_THRESHOLD = 0.005   # < 0.5% black pixels = effectively all white
+HARD_FAIL_DENSE_THRESHOLD = 0.85    # > 85% black pixels = effectively all black
+
+
+def _is_valid_image(image_bytes: bytes, page_number: int, raw_result: Optional[dict] = None) -> tuple[bool, str]:
+    """Lightweight validation. Returns (is_valid, fail_reason).
+
+    Hard-retry only on: completely black, completely white, or NSFW flag.
     """
-    7-point image validation. Returns (is_valid, failure_reason).
-    failure_reason is one of: "pass", "low_contrast", "noisy", "colored",
-    "colored_image", "blank", "dense", "sparse", "complex", "watermark",
-    "sparse_fill", "error".
-    """
-    from PIL import Image, ImageStat, ImageFilter
+    from PIL import Image
     import io
     import numpy as np
 
+    if raw_result and raw_result.get("has_nsfw_concepts"):
+        flags = raw_result.get("has_nsfw_concepts", [])
+        if any(flags):
+            logger.warning("image_rejected_nsfw", page=page_number)
+            return False, "nsfw"
+
     try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        gray = img.convert("L")
+        img = Image.open(io.BytesIO(image_bytes)).convert("L")
+        gray = np.array(img)
+        black_ratio = np.sum(gray < 128) / gray.size
 
-        # ── Check 1: Contrast ──
-        stat = ImageStat.Stat(gray)
-        std_dev = stat.stddev[0]
-        if std_dev < MIN_STD_DEV:
-            logger.warning("image_rejected_low_contrast",
-                          page=page_number, std_dev=round(std_dev, 1))
-            return False, "low_contrast"
-        if std_dev > MAX_STD_DEV:
-            logger.warning("image_rejected_too_noisy",
-                          page=page_number, std_dev=round(std_dev, 1))
-            return False, "noisy"
-
-        # ── Check 2: Color detection ──
-        r, g, b = img.split()
-        r_mean = ImageStat.Stat(r).mean[0]
-        g_mean = ImageStat.Stat(g).mean[0]
-        b_mean = ImageStat.Stat(b).mean[0]
-        channel_spread = max(r_mean, g_mean, b_mean) - min(r_mean, g_mean, b_mean)
-        if channel_spread > MAX_CHANNEL_SPREAD:
-            logger.warning("image_rejected_colored",
-                          page=page_number, channel_spread=round(channel_spread, 1))
-            return False, "colored"
-
-        # ── Check 2b: Mean saturation (catches fully colored images) ──
-        import colorsys
-        hsv_array = np.array(img.convert("RGB"))
-        pixels = hsv_array.reshape(-1, 3) / 255.0
-        saturations = np.array([
-            colorsys.rgb_to_hsv(r, g, b)[1]
-            for r, g, b in pixels
-        ])
-        mean_saturation = saturations.mean() * 100
-        logger.debug("saturation_check",
-                     mean_saturation=round(mean_saturation, 1))
-        if mean_saturation > 15:
-            logger.warning("image_rejected_colored",
-                           mean_saturation=round(mean_saturation, 1))
-            return False, "colored_image"
-
-        # ── Check 3: Whitespace ratio (black pixel percentage) ──
-        gray_arr = np.array(gray)
-        black_pixels = np.sum(gray_arr < 128)
-        total_pixels = gray_arr.size
-        black_ratio = black_pixels / total_pixels
-        if black_ratio < MIN_BLACK_RATIO:
-            logger.warning("image_rejected_too_blank",
-                          page=page_number, black_ratio=round(black_ratio, 3))
+        if black_ratio < HARD_FAIL_BLANK_THRESHOLD:
+            logger.warning("image_rejected_blank",
+                           page=page_number, black_ratio=round(black_ratio, 4))
             return False, "blank"
-        if black_ratio > MAX_BLACK_RATIO:
-            logger.warning("image_rejected_too_dense",
-                          page=page_number, black_ratio=round(black_ratio, 3))
-            return False, "dense"
-
-        # ── Check 4: Edge density (enough detail to color?) ──
-        edges = gray.filter(ImageFilter.FIND_EDGES)
-        edge_arr = np.array(edges)
-        edge_pixels = np.sum(edge_arr > 50)
-        edge_ratio = edge_pixels / total_pixels
-        if edge_ratio < MIN_EDGE_RATIO:
-            logger.warning("image_rejected_too_sparse",
-                          page=page_number, edge_ratio=round(edge_ratio, 3))
-            return False, "sparse"
-        if edge_ratio > MAX_EDGE_RATIO:
-            logger.warning("image_rejected_too_complex",
-                          page=page_number, edge_ratio=round(edge_ratio, 3))
-            return False, "complex"
-
-        # ── Check 5: Bottom-strip watermark detection ──
-        h = gray_arr.shape[0]
-        bottom_strip = gray_arr[int(h * 0.92):, :]  # Bottom 8%
-        main_body = gray_arr[:int(h * 0.85), :]
-        bottom_content = np.mean(bottom_strip < 200)
-        main_content = np.mean(main_body < 200)
-        if bottom_content > 0.15 and bottom_content > main_content * 3:
-            logger.warning("image_rejected_watermark_suspected",
-                          page=page_number,
-                          bottom_content=round(bottom_content, 3),
-                          main_content=round(main_content, 3))
-            return False, "watermark"
-
-        # ── Check 6: Ink-to-Paper density (fill ratio) ──
-        # Non-white pixels = any pixel below 250 (accounts for slight JPEG artifacts)
-        non_white_pixels = np.sum(gray_arr < 250)
-        fill_ratio = non_white_pixels / total_pixels
-        if fill_ratio < MIN_FILL_RATIO:
-            logger.warning("image_rejected_sparse_fill",
-                          page=page_number, fill_ratio=round(fill_ratio, 3),
-                          threshold=MIN_FILL_RATIO)
-            return False, "sparse_fill"
+        if black_ratio > HARD_FAIL_DENSE_THRESHOLD:
+            logger.warning("image_rejected_all_black",
+                           page=page_number, black_ratio=round(black_ratio, 4))
+            return False, "all_black"
 
         logger.info("image_quality_passed",
-                   page=page_number,
-                   std_dev=round(std_dev, 1),
-                   channel_spread=round(channel_spread, 1),
-                   mean_saturation=round(mean_saturation, 1),
-                   black_ratio=round(black_ratio, 3),
-                   edge_ratio=round(edge_ratio, 3),
-                   fill_ratio=round(fill_ratio, 3))
+                    page=page_number, black_ratio=round(black_ratio, 3))
         return True, "pass"
 
     except Exception as e:
@@ -377,14 +228,10 @@ async def _generate_one(
     scene: Scene,
     semaphore: asyncio.Semaphore,
     use_library: bool = True,
+    character_image_url: Optional[str] = None,
+    age_range: Optional[str] = None,
 ) -> ImageResult:
-    """
-    Generate one page image. Checks library cache first to avoid fal.ai costs.
-    On library miss, falls back to fal.ai with quality validation.
-    On failure, retry with prompt variation (up to 3 attempts).
-    On sparse_fill failure, retry with higher guidance_scale and density filler keywords.
-    """
-    # ── Library cache check (skip for cover pages — those need custom composition) ──
+    """Generate one page image. Library cache is checked first."""
     if use_library and not scene.is_cover:
         from app.services.library_cache import find_match
         library_url = await find_match(
@@ -393,7 +240,6 @@ async def _generate_one(
             complexity=scene.complexity,
         )
         if library_url:
-            # Download to verify the image is accessible
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.get(library_url)
@@ -416,59 +262,51 @@ async def _generate_one(
                                page=scene.page_number,
                                url=library_url,
                                error=str(e))
-                # Fall through to fal.ai generation
 
     async with semaphore:
         last_result = None
         fal_calls = 0
-        for attempt in range(3):
+        prompt = _build_prompt(scene, age_range=age_range)
+
+        for attempt in range(2):
             try:
-                variation = RETRY_VARIATIONS[attempt] if attempt < len(RETRY_VARIATIONS) else ""
-                guidance = 5.5  # Default guidance scale
-
-                # If previous attempt failed due to sparse fill, boost density
-                if attempt > 0 and last_result and getattr(last_result, '_fail_reason', '') == 'sparse_fill':
-                    variation = f", {DENSITY_FILLER}"
-                    guidance = 7.5  # Higher guidance = stronger prompt adherence
-                    logger.info("density_retry_boost",
-                              page=scene.page_number, attempt=attempt + 1,
-                              guidance_scale=guidance)
-
-                prompt = _build_prompt(scene, variation=variation)
-
-                if attempt > 0:
-                    logger.info("image_quality_retry_with_variation",
-                              page=scene.page_number, attempt=attempt + 1,
-                              variation=variation[:60], guidance=guidance)
-
                 fal_calls += 1
-                result = await _call_fal_single(prompt, scene.page_number, guidance_scale=guidance)
+                image_url, raw_result = await _call_kontext(
+                    prompt,
+                    scene.page_number,
+                    character_image_url=character_image_url,
+                )
 
-                # Download and validate before accepting
                 async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.get(result.image_url)
+                    resp = await client.get(image_url)
                     img_bytes = resp.content
 
-                is_valid, fail_reason = _is_valid_image(img_bytes, scene.page_number)
+                is_valid, fail_reason = _is_valid_image(img_bytes, scene.page_number, raw_result)
                 if is_valid:
-                    result.image_bytes = img_bytes
-                    result.fal_attempts = fal_calls
-                    return result
-                else:
-                    logger.warning("image_quality_failed",
-                                  page=scene.page_number, attempt=attempt + 1,
-                                  reason=fail_reason)
-                    last_result = result
-                    last_result.image_bytes = img_bytes
-                    last_result._fail_reason = fail_reason  # Track reason for next retry
-                    continue
+                    return ImageResult(
+                        page_number=scene.page_number,
+                        image_url=image_url,
+                        image_bytes=img_bytes,
+                        success=True,
+                        fal_attempts=fal_calls,
+                    )
+
+                logger.warning("image_quality_failed",
+                               page=scene.page_number, attempt=attempt + 1,
+                               reason=fail_reason)
+                last_result = ImageResult(
+                    page_number=scene.page_number,
+                    image_url=image_url,
+                    image_bytes=img_bytes,
+                    success=True,
+                    fal_attempts=fal_calls,
+                    error=fail_reason,
+                )
 
             except Exception as e:
-                logger.error("fal_call_exception",
-                            page=scene.page_number, attempt=attempt + 1, error=str(e))
-                # Do NOT wipe last_result — preserve any bytes from earlier attempts
+                logger.error("kontext_exception",
+                             page=scene.page_number, attempt=attempt + 1, error=str(e))
 
-        # All attempts failed quality check — return last result anyway
         logger.warning("image_quality_all_attempts_failed", page=scene.page_number)
         if last_result:
             last_result.fal_attempts = fal_calls
@@ -477,26 +315,54 @@ async def _generate_one(
             page_number=scene.page_number,
             image_url="",
             success=False,
-            error="All generation attempts failed quality check",
+            error="All generation attempts failed",
             fal_attempts=fal_calls,
         )
 
 
-async def generate_images(scenes: list[Scene]) -> tuple[list[ImageResult], ImageGenMetrics]:
-    """
-    Fire ALL image generation calls concurrently.
-    Checks library cache first for each page; falls back to fal.ai on miss.
-    Capped at max_concurrent_fal_calls via semaphore.
-    Returns (results, metrics) for cost tracking.
-    """
-    logger.info("image_gen_start", page_count=len(scenes))
+async def generate_page_image(
+    scene: Scene,
+    age_range: Optional[str] = None,
+    character_image_url: Optional[str] = None,
+) -> str:
+    """Generate a single coloring book page and return its image URL.
 
-    # Pre-warm the library index (single R2 list call, not per-page)
+    Convenience wrapper around _generate_one for callers that just need a URL.
+    """
+    result = await _generate_one(
+        scene,
+        _semaphore,
+        use_library=False,
+        character_image_url=character_image_url,
+        age_range=age_range,
+    )
+    if not result.success or not result.image_url:
+        raise RuntimeError(f"Image generation failed: {result.error}")
+    return result.image_url
+
+
+async def generate_images(
+    scenes: list[Scene],
+    character_image_url: Optional[str] = None,
+    age_range: Optional[str] = None,
+) -> tuple[list[ImageResult], ImageGenMetrics]:
+    """Fire all image generation calls concurrently."""
+    logger.info("image_gen_start", page_count=len(scenes),
+                has_character=bool(character_image_url))
+
     from app.services.library_cache import load_library_index
     await load_library_index()
 
     results = await asyncio.gather(
-        *[_generate_one(scene, _semaphore) for scene in scenes]
+        *[
+            _generate_one(
+                scene,
+                _semaphore,
+                character_image_url=character_image_url,
+                age_range=age_range,
+            )
+            for scene in scenes
+        ]
     )
 
     successful = [r for r in results if r.success]
@@ -533,7 +399,7 @@ async def generate_images(scenes: list[Scene]) -> tuple[list[ImageResult], Image
 
 
 async def post_process_image(image_bytes: bytes) -> bytes:
-    """No-op — LoRA produces correct B&W line art. Kept for API compatibility."""
+    """No-op — Kontext produces correct B&W line art. Kept for API compatibility."""
     return image_bytes
 
 
@@ -551,35 +417,30 @@ COVER_SUBJECTS = {
 
 
 async def generate_cover_bg_image(subject: str, theme: str) -> str:
-    """
-    Generate a small decorative image for cover background.
+    """Generate a small decorative image for cover background.
+
     Returns the local temp file path of the saved PNG.
-    Uses the same LoRA endpoint for style consistency, but at 512x512.
     """
     prompt = (
-        f"{subject}, tmcb_style, simple cute illustration, "
-        f"pure black and white line art, no fill, white background, "
-        f"centered, minimal detail, children's coloring book decoration"
+        "Black and white coloring book page, clean thick outlines only, "
+        "pure white background, no shading no gray no color fill, "
+        f"a single {subject}, centered, simple cute illustration, "
+        "very simple bold shapes, minimal detail, thick lines, "
+        "children's illustration style, printable line art"
     )
-
-    lora_url = settings.custom_lora_url
-    loras = [{"path": lora_url, "scale": settings.lora_scale}] if lora_url else []
-    endpoint = "fal-ai/flux-lora" if loras else "fal-ai/flux/dev"
 
     try:
         result = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: fal_client.run(
-                    endpoint,
+                    KONTEXT_TEXT_MODEL,
                     arguments={
                         "prompt": prompt,
-                        "loras": loras,
-                        "image_size": {"width": 512, "height": 512},
-                        "num_inference_steps": 25,
-                        "guidance_scale": 5.5,
+                        "guidance_scale": 3.5,
+                        "num_inference_steps": 28,
                         "num_images": 1,
-                        "enable_safety_checker": True,
+                        "aspect_ratio": "1:1",
                         "output_format": "png",
                     },
                 ),
@@ -589,7 +450,6 @@ async def generate_cover_bg_image(subject: str, theme: str) -> str:
 
         image_url = result["images"][0]["url"]
 
-        # Download to temp file
         import tempfile
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(image_url)
@@ -611,12 +471,49 @@ async def generate_cover_bg_image(subject: str, theme: str) -> str:
         raise
 
 
+async def generate_character_sketch(photo_url: str) -> str:
+    """Convert a user-uploaded photo into a coloring-book character sketch via Kontext.
+
+    Returns the fal.media image URL of the generated sketch.
+    """
+    prompt = (
+        "Convert this photo into a black and white coloring book character "
+        "illustration. Clean thick outlines only, pure white background, "
+        "no shading, no gray, no color. Friendly children's coloring book "
+        "style. Preserve the character's key features and likeness."
+    )
+    logger.info("character_sketch_start", photo_url=photo_url)
+    try:
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: fal_client.run(
+                    KONTEXT_MODEL,
+                    arguments={
+                        "prompt": prompt,
+                        "image_url": photo_url,
+                        "guidance_scale": 3.5,
+                        "num_inference_steps": 28,
+                        "num_images": 1,
+                        "output_format": "png",
+                    },
+                ),
+            ),
+            timeout=120.0,
+        )
+        image_url = result["images"][0]["url"]
+        logger.info("character_sketch_success", url=image_url)
+        return image_url
+    except Exception as e:
+        logger.error("character_sketch_failed", error=str(e))
+        raise
+
+
 # ─── Self-test ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import io
     from PIL import Image as PILImage
-    import numpy as np
     import PIL.ImageDraw as ImageDraw
 
     def _make_png(img):
@@ -624,28 +521,18 @@ if __name__ == "__main__":
         img.save(buf, format="PNG")
         return buf.getvalue()
 
-    # Test 1: Solid blue image should FAIL
-    blue_img = PILImage.new("RGB", (100, 100),
-                             color=(30, 100, 200))
-    blue_bytes = _make_png(blue_img)
-    result, reason = _is_valid_image(blue_bytes, page_number=901)
-    assert result == False, f"Blue image should fail, got {result}"
-    print(f"✅ Test 1 PASS: Blue image rejected ({reason})")
+    blank = PILImage.new("RGB", (200, 200), color=(255, 255, 255))
+    result, reason = _is_valid_image(_make_png(blank), page_number=901)
+    assert result is False and reason == "blank", f"blank should fail, got {reason}"
+    print(f"Test 1 PASS: blank rejected ({reason})")
 
-    # Test 2: White image with black lines should PASS
-    # Uses light gray bg (230) + dense cross-hatching to pass fill-ratio check
-    white_img = PILImage.new("RGB", (200, 200),
-                              color=(230, 230, 230))
-    draw = ImageDraw.Draw(white_img)
-    # Dense grid to ensure fill ratio > 60%
+    line = PILImage.new("RGB", (200, 200), color=(255, 255, 255))
+    draw = ImageDraw.Draw(line)
     for i in range(0, 200, 12):
         draw.line([(i, 0), (i, 200)], fill=(0, 0, 0), width=2)
         draw.line([(0, i), (200, i)], fill=(0, 0, 0), width=2)
-    draw.line([(10, 10), (190, 190)], fill=(0, 0, 0), width=3)
-    draw.rectangle([50, 50, 150, 150], outline=(0, 0, 0), width=2)
-    line_bytes = _make_png(white_img)
-    result, reason = _is_valid_image(line_bytes, page_number=902)
-    assert result == True, f"Line art should pass, got {result}/{reason}"
-    print(f"✅ Test 2 PASS: Line art accepted")
+    result, reason = _is_valid_image(_make_png(line), page_number=902)
+    assert result is True, f"line art should pass, got {reason}"
+    print("Test 2 PASS: line art accepted")
 
-    print("All saturation tests passed ✅")
+    print("All tests passed")

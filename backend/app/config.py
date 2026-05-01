@@ -16,8 +16,10 @@ class Settings(BaseSettings):
 
     # fal.ai
     fal_key: str  # NO default — must be in .env
-    custom_lora_url: str = ""  # LoRA weights URL for coloring book style
-    lora_scale: float = 1.0   # LoRA influence scale (0.0-1.0)
+    # Legacy fields — kept optional so existing .env files still load.
+    # Image generation now uses fal-ai/flux-pro/kontext (no LoRA).
+    custom_lora_url: str = ""
+    lora_scale: float = 1.0
 
     # Anthropic
     anthropic_api_key: str  # NO default
@@ -74,8 +76,8 @@ class Settings(BaseSettings):
         return [u.strip() for u in self.admin_uids.split(",") if u.strip()]
 
     # Cost tracking (per-unit rates for margin calculation)
-    # fal.ai FLUX LoRA: $0.035/megapixel × 2.10 MP (1216×1728) = $0.074/image
-    cost_flux_lora: float = 0.074
+    # fal.ai FLUX.1 Kontext [pro]: $0.04/image
+    cost_flux_lora: float = 0.04
     # Anthropic Claude Haiku 4.5: $1.00/MTok input, $5.00/MTok output
     cost_haiku_input: float = 0.000001   # per token
     cost_haiku_output: float = 0.000005  # per token
