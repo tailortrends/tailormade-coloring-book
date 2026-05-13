@@ -95,6 +95,18 @@ def test_create_checkout_session_returns_url(mock_update, mock_get_info):
     assert body["checkout_url"] == "https://checkout.stripe.com/pay/cs_test_abc"
 
 
+def test_checkout_rejects_unknown_price_id():
+    """Client-provided price IDs must be allowlisted before Stripe is called."""
+    response = client.post(
+        "/api/v1/stripe/checkout",
+        json={"price_id": "price_FAKE123MALICIOUS"},
+        headers=AUTH_HEADER,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid price selection"
+
+
 # ── Test 2: Webhook rejects invalid signature ────────────────────────────────
 
 def test_webhook_rejects_invalid_signature():
@@ -111,6 +123,38 @@ def test_webhook_rejects_invalid_signature():
     )
 
     assert response.status_code == 400
+
+
+def test_webhook_handler_exception_returns_500():
+    """Webhook handler failures must surface as 500s so Stripe retries."""
+    event = _make_webhook_event("checkout.session.completed", {
+        "id": "cs_test_error",
+        "metadata": {"firebase_uid": "user-abc"},
+        "customer": "cus_test_123",
+        "mode": "subscription",
+        "subscription": "sub_test_456",
+    })
+
+    original_handler = stripe_mod._handle_checkout_completed
+
+    async def _raise(_session):
+        raise RuntimeError("forced handler failure")
+
+    stripe_mod._handle_checkout_completed = _raise
+    try:
+        with patch("stripe.Webhook.construct_event", return_value=event):
+            response = client.post(
+                "/api/v1/stripe/webhook",
+                content=json.dumps(event).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "stripe-signature": "t=123,v1=fakesig",
+                },
+            )
+
+        assert response.status_code == 500
+    finally:
+        stripe_mod._handle_checkout_completed = original_handler
 
 
 # ── Test 3: checkout.session.completed updates Firestore tier ────────────────
