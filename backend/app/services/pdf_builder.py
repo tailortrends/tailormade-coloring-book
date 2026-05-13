@@ -232,6 +232,7 @@ async def build_pdf(
     age_range: str,
     theme: str = "default",
     cover_hero_path: Optional[str] = None,
+    user_tier: str = "free",
 ) -> bytes:
     """
     Build a print-ready PDF with full-page cover hero image and clean
@@ -240,8 +241,11 @@ async def build_pdf(
     if len(page_image_urls) > 20:
         raise ValueError(f"Page count {len(page_image_urls)} exceeds maximum of 20")
 
+    add_watermark = user_tier == "free"
     tmp_dir = tempfile.mkdtemp(prefix=f"tailormade_{book_id}_")
-    logger.info("pdf_build_start", book_id=book_id, pages=len(page_image_urls), tmp_dir=tmp_dir)
+    logger.info("pdf_build_start", book_id=book_id, pages=len(page_image_urls),
+                tmp_dir=tmp_dir, user_tier=user_tier,
+                add_watermark=add_watermark)
 
     try:
         # Download all images to disk concurrently
@@ -250,7 +254,7 @@ async def build_pdf(
         # Render PDF in thread pool (reportlab is sync)
         pdf_bytes = await asyncio.get_event_loop().run_in_executor(
             None, _render_pdf, title, age_range, image_paths,
-            cover_hero_path, theme
+            cover_hero_path, theme, add_watermark
         )
 
         logger.info("pdf_build_success", book_id=book_id, pdf_size_kb=len(pdf_bytes) // 1024)
@@ -290,6 +294,7 @@ def _render_pdf(
     image_paths: list[str],
     cover_hero_path: Optional[str],
     theme: str,
+    add_watermark: bool = False,
 ) -> bytes:
     """Render PDF: cover page with hero image, then clean image-only coloring pages."""
     from reportlab.pdfgen import canvas
@@ -299,15 +304,32 @@ def _render_pdf(
 
     # ── COVER PAGE (hero image + title overlay) ──
     _draw_cover(c, title, age_range, cover_hero_path)
+    if add_watermark:
+        _draw_free_watermark(c)
     c.showPage()
 
     # ── COLORING PAGES (image only — no text, no borders, no page numbers) ──
     for img_path in image_paths:
         _draw_image_page(c, img_path)
+        if add_watermark:
+            _draw_free_watermark(c)
         c.showPage()
 
     c.save()
     return buffer.getvalue()
+
+
+def _draw_free_watermark(c):
+    """Overlay a faint diagonal watermark for free-tier PDFs."""
+    from reportlab.lib.colors import Color
+
+    c.saveState()
+    c.translate(PAGE_W / 2, PAGE_H / 2)
+    c.rotate(35)
+    c.setFillColor(Color(0.1, 0.1, 0.1, alpha=0.10))
+    c.setFont("Helvetica-Bold", 42)
+    c.drawCentredString(0, 0, "TailorMade - Free Version")
+    c.restoreState()
 
 
 def _draw_cover(c, title: str, age_range: str, cover_hero_path: Optional[str]):

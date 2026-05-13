@@ -8,6 +8,7 @@ prompts and an optional character reference image — no LoRA required.
 import asyncio
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 import httpx
 import fal_client
@@ -258,6 +259,7 @@ async def _generate_one(
     use_library: bool = True,
     character_image_url: Optional[str] = None,
     age_range: Optional[str] = None,
+    user_tier: str = "free",
 ) -> ImageResult:
     """Generate one page image. Library cache is checked first."""
     if use_library and not scene.is_cover:
@@ -299,6 +301,11 @@ async def _generate_one(
         for attempt in range(2):
             try:
                 fal_calls += 1
+                if user_tier == "free":
+                    logger.info("free_tier_generation_deprioritized",
+                                page=scene.page_number,
+                                hour=datetime.now().hour)
+                    await asyncio.sleep(2)
                 image_url, raw_result = await _call_kontext(
                     prompt,
                     scene.page_number,
@@ -352,6 +359,7 @@ async def generate_page_image(
     scene: Scene,
     age_range: Optional[str] = None,
     character_image_url: Optional[str] = None,
+    user_tier: str = "free",
 ) -> str:
     """Generate a single coloring book page and return its image URL.
 
@@ -363,6 +371,7 @@ async def generate_page_image(
         use_library=False,
         character_image_url=character_image_url,
         age_range=age_range,
+        user_tier=user_tier,
     )
     if not result.success or not result.image_url:
         raise RuntimeError(f"Image generation failed: {result.error}")
@@ -373,10 +382,12 @@ async def generate_images(
     scenes: list[Scene],
     character_image_url: Optional[str] = None,
     age_range: Optional[str] = None,
+    user_tier: str = "free",
 ) -> tuple[list[ImageResult], ImageGenMetrics]:
     """Fire all image generation calls concurrently."""
     logger.info("image_gen_start", page_count=len(scenes),
-                has_character=bool(character_image_url))
+                has_character=bool(character_image_url),
+                user_tier=user_tier)
 
     from app.services.library_cache import load_library_index
     await load_library_index()
@@ -388,6 +399,7 @@ async def generate_images(
                 _semaphore,
                 character_image_url=character_image_url,
                 age_range=age_range,
+                user_tier=user_tier,
             )
             for scene in scenes
         ]

@@ -48,6 +48,26 @@ function navigateToCreate() {
 function getInitials(title: string) {
   return title.slice(0, 2).toUpperCase()
 }
+
+function parseDate(value: any): Date {
+  if (!value) return new Date()
+  if (typeof value === 'object' && 'seconds' in value) {
+    return new Date(value.seconds * 1000)
+  }
+  if (typeof value === 'string') {
+    return new Date(value)
+  }
+  if (typeof value === 'number') {
+    return new Date(value)
+  }
+  return new Date()
+}
+
+function formatBookDate(value: any): string {
+  const date = parseDate(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 </script>
 
 <template>
@@ -181,7 +201,7 @@ function getInitials(title: string) {
                   <span class="material-symbols-outlined text-[14px]">description</span>
                   <span>{{ book.page_count }} pages</span>
                   <span>•</span>
-                  <span>{{ new Date(book.created_at.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</span>
+                  <span>{{ formatBookDate(book.created_at) }}</span>
                 </div>
                 
                 <div class="mt-auto grid grid-cols-2 gap-3">

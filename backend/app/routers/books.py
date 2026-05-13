@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
 import uuid
 import tempfile
 import os
+import io
+import zipfile
 import httpx
 import structlog
+from pydantic import BaseModel
 
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limit import (
@@ -29,6 +33,10 @@ settings = get_settings()
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 
+class BulkDownloadRequest(BaseModel):
+    book_ids: list[str]
+
+
 def _owner_uid(data: dict) -> str | None:
     return data.get("uid") or data.get("user_id")
 
@@ -45,6 +53,12 @@ def _book_page_keys(data: dict) -> list[str]:
         for key in (storage.object_key_from_url(url) for url in data.get("page_urls", []))
         if key
     ]
+
+
+def _safe_pdf_filename(title: str, fallback: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", " ") else "_" for ch in title)
+    safe = "_".join(safe.split()).strip("_")
+    return f"{safe or fallback}.pdf"
 
 
 def _book_response_from_data(data: dict) -> BookResponse:
@@ -68,6 +82,53 @@ def _book_response_from_data(data: dict) -> BookResponse:
         created_at=data["created_at"],
         theme=data["theme"],
         age_range=data["age_range"],
+    )
+
+
+@router.post("/download-zip")
+async def download_books_zip(
+    body: BulkDownloadRequest,
+    user: dict = Depends(get_current_user),
+):
+    uid = user["uid"]
+    stripe_info = await firebase.get_user_stripe_info(uid) or {}
+    user_tier = stripe_info.get("subscription_tier", user.get("tier", "free"))
+    subscription_active = stripe_info.get("subscription_active", False)
+    if user_tier == "free" or not subscription_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Bulk download requires a paid plan",
+        )
+    if not body.book_ids:
+        raise HTTPException(status_code=400, detail="No books selected")
+    if len(body.book_ids) > 50:
+        raise HTTPException(status_code=400, detail="Too many books selected")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        used_names: set[str] = set()
+        for book_id in body.book_ids:
+            data = await firebase.get_book(book_id)
+            if not data:
+                raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+            if _owner_uid(data) != uid:
+                raise HTTPException(status_code=403, detail="Access denied")
+            pdf_key = _book_pdf_key(data)
+            if not pdf_key:
+                raise HTTPException(status_code=404, detail=f"PDF not available: {book_id}")
+
+            filename = _safe_pdf_filename(data.get("title", ""), book_id)
+            if filename in used_names:
+                stem = filename.removesuffix(".pdf")
+                filename = f"{stem}_{book_id[:8]}.pdf"
+            used_names.add(filename)
+            archive.writestr(filename, await storage.get_object_bytes(pdf_key))
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="tailormade-books.zip"'},
     )
 
 
@@ -209,6 +270,7 @@ async def _generate_book_after_reservation(
             scenes,
             character_image_url=character_image_url,
             age_range=request.age_range,
+            user_tier=permit.tier,
         )
     except Exception as e:
         logger.error("image_generation_failed", error=str(e))
@@ -309,6 +371,7 @@ async def _generate_book_after_reservation(
             age_range=request.age_range,
             theme=request.theme,
             cover_hero_path=cover_hero_local_path,
+            user_tier=permit.tier,
         )
     except Exception as e:
         logger.error("pdf_build_failed", error=str(e))
