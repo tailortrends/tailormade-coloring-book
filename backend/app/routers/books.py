@@ -7,7 +7,12 @@ import httpx
 import structlog
 
 from app.middleware.auth import get_current_user
-from app.middleware.rate_limit import check_rate_limit, increment_usage
+from app.middleware.rate_limit import (
+    GenerationPermit,
+    check_rate_limit,
+    increment_usage,
+    release_quota_reservation,
+)
 from app.models.book import BookRequest, BookResponse
 from app.config import get_settings
 from app.services import (
@@ -134,6 +139,32 @@ async def generate_book(
     # Check rate limit BEFORE generation — returns permit with max_pages
     permit = await check_rate_limit(uid, tier)
 
+    try:
+        return await _generate_book_after_reservation(request, uid, tier, book_id, permit)
+    except HTTPException as e:
+        await release_quota_reservation(uid, permit)
+        if e.status_code >= 500:
+            raise HTTPException(
+                status_code=500,
+                detail="Generation failed. Your credit has been returned.",
+            ) from e
+        raise
+    except Exception as e:
+        await release_quota_reservation(uid, permit)
+        logger.error("generation_pipeline_unhandled", uid=uid, book_id=book_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Generation failed. Your credit has been returned.",
+        ) from e
+
+
+async def _generate_book_after_reservation(
+    request: BookRequest,
+    uid: str,
+    tier: str,
+    book_id: str,
+    permit: GenerationPermit,
+) -> BookResponse:
     # Silently cap page count to tier's max (no error, just cap)
     if request.page_count > permit.max_pages:
         logger.info("page_count_capped", requested=request.page_count,
@@ -347,7 +378,7 @@ async def generate_book(
     await _record_analytics(request, permit.tier, image_metrics, total_cost)
 
     # Increment usage ONLY after successful generation
-    await increment_usage(uid)
+    await increment_usage(uid, permit)
 
     logger.info(
         "book_generation_complete", uid=uid, book_id=book_id, pdf_key=pdf_key,

@@ -6,6 +6,7 @@ Tiers: free | single | family | teacher
 Free = 1 book LIFETIME (not monthly).
 """
 
+import asyncio
 from firebase_admin import firestore
 from fastapi import HTTPException
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ class GenerationPermit:
     max_pages: int
     tier: str
     used_credit: bool = False  # True if a one-time credit was consumed
+    reservation_kind: str = "free"
 
 
 async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
@@ -37,18 +39,20 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
       3. single  (one-time credit)
       4. free    (lifetime limit)
     """
-    import asyncio
-
     db = firestore.client()
     user_ref = db.collection("users").document(uid)
+    usage_ref = db.collection("usage").document(uid)
 
     @firestore.transactional
-    def gate_transaction(transaction, ref):
-        snapshot = ref.get(transaction=transaction)
+    def gate_transaction(transaction, user_document, usage_document):
+        user_snapshot = user_document.get(transaction=transaction)
+        usage_snapshot = usage_document.get(transaction=transaction)
         now = datetime.now(timezone.utc)
+        month_key = now.strftime("%Y-%m")
+        day_key = now.strftime("%Y-%m-%d")
 
-        if snapshot.exists:
-            data = snapshot.to_dict()
+        if user_snapshot.exists:
+            data = user_snapshot.to_dict()
         else:
             # Brand-new user — initialise defaults
             data = {
@@ -57,54 +61,98 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
                 "books_generated_this_month": 0,
                 "one_time_credits": 0,
                 "subscription_active": False,
-                "month_reset": now.strftime("%Y-%m"),
+                "month_reset": month_key,
             }
-            transaction.set(ref, data)
+
+        usage = usage_snapshot.to_dict() if usage_snapshot.exists else {}
 
         sub_tier = data.get("subscription_tier", "free")
         active = data.get("subscription_active", False)
         total = data.get("books_generated_total", 0)
-        monthly = data.get("books_generated_this_month", 0)
         credits = data.get("one_time_credits", 0)
 
         # Monthly counter reset
-        month_key = now.strftime("%Y-%m")
         if data.get("month_reset") != month_key:
-            monthly = 0
-            transaction.update(ref, {
+            user_monthly = 0
+            transaction.set(user_document, {
                 "books_generated_this_month": 0,
                 "month_reset": month_key,
-            })
+            }, merge=True)
+        else:
+            user_monthly = data.get("books_generated_this_month", 0)
+
+        reserved_monthly = (
+            usage.get("monthly_count", 0)
+            if usage.get("month_key") == month_key
+            else 0
+        )
+        monthly = max(user_monthly, reserved_monthly)
+        daily_count = (
+            usage.get("daily_count", 0)
+            if usage.get("daily_date") == day_key
+            else 0
+        )
+        free_count = max(usage.get("free_count", 0), total)
+        single_reserved = usage.get("single_reserved", 0)
+
+        if not user_snapshot.exists:
+            transaction.set(user_document, data, merge=True)
+
+        def reserve(kind: str, permit_tier: str, max_pages: int, used_credit: bool = False) -> GenerationPermit:
+            update = {
+                "daily_date": day_key,
+                "daily_count": daily_count + 1,
+                "month_key": month_key,
+                "updated_at": now,
+            }
+            if kind in ("family", "teacher"):
+                update["monthly_count"] = monthly + 1
+            elif kind == "single":
+                update["single_reserved"] = single_reserved + 1
+            elif kind == "free":
+                update["free_count"] = free_count + 1
+            transaction.set(usage_document, update, merge=True)
+            return GenerationPermit(
+                max_pages=max_pages,
+                tier=permit_tier,
+                used_credit=used_credit,
+                reservation_kind=kind,
+            )
 
         # 1. TEACHER
         if sub_tier == "teacher" and active:
             if monthly < settings.teacher_monthly_limit:
-                return GenerationPermit(
-                    max_pages=settings.teacher_max_pages, tier="teacher"
+                return reserve(
+                    "teacher",
+                    "teacher",
+                    settings.teacher_max_pages,
                 )
 
         # 2. FAMILY
         if sub_tier == "family" and active:
             if monthly < settings.family_monthly_limit:
-                return GenerationPermit(
-                    max_pages=settings.family_max_pages, tier="family"
+                return reserve(
+                    "family",
+                    "family",
+                    settings.family_max_pages,
                 )
 
-        # 3. SINGLE CREDIT (available regardless of sub_tier)
-        if credits > 0:
-            transaction.update(ref, {
-                "one_time_credits": credits - 1,
-            })
-            return GenerationPermit(
-                max_pages=settings.single_max_pages,
-                tier="single",
+        # 3. SINGLE CREDIT (available regardless of sub_tier).
+        # The paid credit is reserved here and consumed only after success.
+        if credits - single_reserved > 0:
+            return reserve(
+                "single",
+                "single",
+                settings.single_max_pages,
                 used_credit=True,
             )
 
         # 4. FREE TIER — LIFETIME CHECK
-        if total < settings.free_lifetime_limit:
-            return GenerationPermit(
-                max_pages=settings.free_max_pages, tier="free"
+        if free_count < settings.free_lifetime_limit:
+            return reserve(
+                "free",
+                "free",
+                settings.free_max_pages,
             )
 
         # 5. BLOCKED — build quota info for the frontend
@@ -125,7 +173,7 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
         else:
             # Free tier — lifetime limit
             limit_val = settings.free_lifetime_limit
-            used_val = total
+            used_val = free_count
             reset = None
 
         raise HTTPException(
@@ -149,7 +197,7 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
     loop = asyncio.get_event_loop()
     transaction = db.transaction()
     permit = await loop.run_in_executor(
-        None, gate_transaction, transaction, user_ref
+        None, gate_transaction, transaction, user_ref, usage_ref
     )
     logger.info("rate_limit_check_passed", uid=uid, tier=permit.tier,
                 max_pages=permit.max_pages,
@@ -157,36 +205,97 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
     return permit
 
 
-async def increment_usage(uid: str) -> None:
+async def increment_usage(uid: str, permit: GenerationPermit | None = None) -> None:
     """
     Called ONLY after successful book generation.
-    Increments both lifetime total and monthly counter atomically.
+    Finalizes reserved quota and increments user-facing counters atomically.
     """
-    import asyncio
-
     db = firestore.client()
     user_ref = db.collection("users").document(uid)
+    usage_ref = db.collection("usage").document(uid)
 
     @firestore.transactional
-    def increment_in_transaction(transaction, ref):
-        snapshot = ref.get(transaction=transaction)
-        if snapshot.exists:
-            data = snapshot.to_dict()
-            transaction.update(ref, {
+    def increment_in_transaction(transaction, user_document, usage_document):
+        user_snapshot = user_document.get(transaction=transaction)
+        usage_snapshot = usage_document.get(transaction=transaction)
+        usage = usage_snapshot.to_dict() if usage_snapshot.exists else {}
+        now = datetime.now(timezone.utc)
+
+        if user_snapshot.exists:
+            data = user_snapshot.to_dict()
+            update = {
                 "books_generated_total": data.get("books_generated_total", 0) + 1,
                 "books_generated_this_month": data.get("books_generated_this_month", 0) + 1,
-            })
+                "month_reset": now.strftime("%Y-%m"),
+                "last_generation_at": now,
+            }
+            if permit and permit.used_credit:
+                update["one_time_credits"] = max(0, data.get("one_time_credits", 0) - 1)
+            transaction.update(user_document, update)
         else:
-            transaction.set(ref, {
+            transaction.set(user_document, {
                 "subscription_tier": "free",
                 "books_generated_total": 1,
                 "books_generated_this_month": 1,
                 "one_time_credits": 0,
                 "subscription_active": False,
-                "month_reset": datetime.now(timezone.utc).strftime("%Y-%m"),
+                "month_reset": now.strftime("%Y-%m"),
+                "last_generation_at": now,
             })
+
+        usage_update = {
+            "successful_count": usage.get("successful_count", 0) + 1,
+            "last_success_at": now,
+        }
+        if permit and permit.used_credit:
+            usage_update["single_reserved"] = max(0, usage.get("single_reserved", 0) - 1)
+        transaction.set(usage_document, usage_update, merge=True)
 
     loop = asyncio.get_event_loop()
     transaction = db.transaction()
-    await loop.run_in_executor(None, increment_in_transaction, transaction, user_ref)
-    logger.info("usage_incremented", uid=uid)
+    await loop.run_in_executor(
+        None, increment_in_transaction, transaction, user_ref, usage_ref
+    )
+    logger.info(
+        "usage_incremented",
+        uid=uid,
+        tier=permit.tier if permit else None,
+        reservation_kind=permit.reservation_kind if permit else None,
+    )
+
+
+async def release_quota_reservation(uid: str, permit: GenerationPermit) -> None:
+    """Return a reserved generation slot after a failed generation."""
+    db = firestore.client()
+    usage_ref = db.collection("usage").document(uid)
+
+    @firestore.transactional
+    def rollback_in_transaction(transaction, usage_document):
+        snapshot = usage_document.get(transaction=transaction)
+        if not snapshot.exists:
+            return
+
+        usage = snapshot.to_dict()
+        update = {
+            "daily_count": max(0, usage.get("daily_count", 0) - 1),
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+        if permit.reservation_kind in ("family", "teacher"):
+            update["monthly_count"] = max(0, usage.get("monthly_count", 0) - 1)
+        elif permit.reservation_kind == "single":
+            update["single_reserved"] = max(0, usage.get("single_reserved", 0) - 1)
+        elif permit.reservation_kind == "free":
+            update["free_count"] = max(0, usage.get("free_count", 0) - 1)
+
+        transaction.set(usage_document, update, merge=True)
+
+    loop = asyncio.get_event_loop()
+    transaction = db.transaction()
+    await loop.run_in_executor(None, rollback_in_transaction, transaction, usage_ref)
+    logger.info(
+        "quota_reservation_released",
+        uid=uid,
+        tier=permit.tier,
+        reservation_kind=permit.reservation_kind,
+    )
