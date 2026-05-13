@@ -52,8 +52,9 @@ COMPLEXITY_MODIFIERS: dict[str, str] = {
 }
 
 NEGATIVE_PROMPT = (
-    "color, shading, gray tones, gradient, realistic photo, "
-    "watermark, text overlay, signature, colored background, blurry, distorted"
+    "color, colorful, shading, gradients, watercolor, painting, photograph, "
+    "realistic, 3d render, filled areas, gray fill, dark background, "
+    "blur, noise, text, watermark, signature, border, frame"
 )
 
 
@@ -146,6 +147,7 @@ async def _call_kontext(
 
     arguments: dict = {
         "prompt": prompt,
+        "negative_prompt": NEGATIVE_PROMPT,
         "guidance_scale": 3.5,
         "num_inference_steps": 28,
         "num_images": 1,
@@ -156,7 +158,8 @@ async def _call_kontext(
         arguments["image_url"] = character_image_url
 
     logger.info("kontext_call_start", page=page_number, endpoint=endpoint,
-                has_ref=has_ref, prompt_preview=prompt[:120])
+                has_ref=has_ref, prompt_preview=prompt[:120],
+                negative_prompt=NEGATIVE_PROMPT)
     try:
         result = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
@@ -182,6 +185,23 @@ async def _call_kontext(
 # softer quality issues are not worth the extra cost of retries).
 HARD_FAIL_BLANK_THRESHOLD = 0.005   # < 0.5% black pixels = effectively all white
 HARD_FAIL_DENSE_THRESHOLD = 0.85    # > 85% black pixels = effectively all black
+MAX_MID_GRAY_RATIO = 0.30           # > 30% mid-gray suggests color/shading survived
+
+
+def validate_is_line_art(image_path: str) -> bool:
+    """
+    Returns True if image looks like line art (mostly white with dark lines).
+    Rejects if more than 30% of pixels are mid-gray.
+    """
+    from PIL import Image
+    import numpy as np
+
+    img = Image.open(image_path).convert("L")
+    arr = np.array(img)
+    mid_gray = np.sum((arr > 50) & (arr < 220))
+    total = arr.size
+    gray_ratio = mid_gray / total
+    return bool(gray_ratio < MAX_MID_GRAY_RATIO)
 
 
 def _is_valid_image(image_bytes: bytes, page_number: int, raw_result: Optional[dict] = None) -> tuple[bool, str]:
@@ -202,7 +222,8 @@ def _is_valid_image(image_bytes: bytes, page_number: int, raw_result: Optional[d
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("L")
         gray = np.array(img)
-        black_ratio = np.sum(gray < 128) / gray.size
+        black_ratio = np.sum(gray < 50) / gray.size
+        mid_gray_ratio = np.sum((gray > 50) & (gray < 220)) / gray.size
 
         if black_ratio < HARD_FAIL_BLANK_THRESHOLD:
             logger.warning("image_rejected_blank",
@@ -212,9 +233,16 @@ def _is_valid_image(image_bytes: bytes, page_number: int, raw_result: Optional[d
             logger.warning("image_rejected_all_black",
                            page=page_number, black_ratio=round(black_ratio, 4))
             return False, "all_black"
+        if mid_gray_ratio > MAX_MID_GRAY_RATIO:
+            logger.warning("image_rejected_mid_gray",
+                           page=page_number,
+                           mid_gray_ratio=round(mid_gray_ratio, 4))
+            return False, "mid_gray"
 
         logger.info("image_quality_passed",
-                    page=page_number, black_ratio=round(black_ratio, 3))
+                    page=page_number,
+                    black_ratio=round(black_ratio, 3),
+                    mid_gray_ratio=round(mid_gray_ratio, 3))
         return True, "pass"
 
     except Exception as e:
@@ -298,7 +326,7 @@ async def _generate_one(
                     page_number=scene.page_number,
                     image_url=image_url,
                     image_bytes=img_bytes,
-                    success=True,
+                    success=scene.is_cover,
                     fal_attempts=fal_calls,
                     error=fail_reason,
                 )
@@ -437,6 +465,7 @@ async def generate_cover_bg_image(subject: str, theme: str) -> str:
                     KONTEXT_TEXT_MODEL,
                     arguments={
                         "prompt": prompt,
+                        "negative_prompt": NEGATIVE_PROMPT,
                         "guidance_scale": 3.5,
                         "num_inference_steps": 28,
                         "num_images": 1,
@@ -463,7 +492,8 @@ async def generate_cover_bg_image(subject: str, theme: str) -> str:
         tmp.write(resp.content)
         tmp.close()
 
-        logger.info("cover_bg_generated", subject=subject, path=tmp.name)
+        logger.info("cover_bg_generated", subject=subject, path=tmp.name,
+                    negative_prompt=NEGATIVE_PROMPT)
         return tmp.name
 
     except Exception as e:
@@ -492,6 +522,7 @@ async def generate_character_sketch(photo_url: str) -> str:
                     arguments={
                         "prompt": prompt,
                         "image_url": photo_url,
+                        "negative_prompt": NEGATIVE_PROMPT,
                         "guidance_scale": 3.5,
                         "num_inference_steps": 28,
                         "num_images": 1,

@@ -15,6 +15,7 @@ export function useLibrary() {
     store.setError(null)
     try {
       const index = await libraryApi.getIndex()
+      // Canonical backend contract: library image lists are returned in `images`.
       store.setIndex(index.themes, index.images)
     } catch (err) {
       store.setError(err instanceof Error ? err.message : 'Failed to fetch library')
