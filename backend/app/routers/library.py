@@ -3,6 +3,7 @@ import structlog
 
 from app.services.library_cache import load_library_index, get_index_stats
 from app.services import firebase
+from app.services import storage
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/library", tags=["library"])
@@ -50,9 +51,37 @@ async def get_library_index(
         for count in tiers.values()
     )
 
+    # Canonical API contract for the frontend is "images"; "index" is retained
+    # as a grouped summary for the admin-style library stats view.
+    images = []
+    for key, object_keys in index.items():
+        folder, tier = key.split(":", 1)
+        parts = folder.split("_", 1)
+        if len(parts) < 2:
+            continue
+        prefix, subject = parts
+        if theme and prefix not in structured:
+            continue
+        for object_key in object_keys:
+            image_id = object_key.rsplit("/", 1)[-1].removesuffix(".png")
+            images.append({
+                "image_id": image_id,
+                "theme": prefix,
+                "tags": [subject],
+                "age_range": tier,
+                "complexity": tier,
+                "r2_key": object_key,
+                "r2_url": storage.generate_presigned_url(
+                    object_key,
+                    expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS,
+                ),
+                "clip_score": 0,
+            })
+
     return {
         "themes": sorted(structured.keys()),
         "index": structured,
+        "images": images[offset:offset + limit],
         "total_images": total_images,
         "total_subjects": sum(len(subjects) for subjects in structured.values()),
     }

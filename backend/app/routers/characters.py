@@ -45,8 +45,13 @@ async def create_character(
     # Upload the original photo to R2 first — Kontext needs a reachable URL.
     try:
         original_ext = image.filename.split(".")[-1] if "." in image.filename else "png"
-        original_url = await storage.upload_character_asset(
+        original_ext = original_ext.lower()
+        original_key = await storage.upload_character_asset(
             input_bytes, character_id, f"original.{original_ext}"
+        )
+        original_url = storage.generate_presigned_url(
+            original_key,
+            expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS,
         )
     except Exception as e:
         logger.error("character_upload_failed", error=str(e))
@@ -59,8 +64,12 @@ async def create_character(
             resp = await client.get(kontext_sketch_url)
             resp.raise_for_status()
             sketch_bytes = resp.content
-        sketch_url = await storage.upload_character_asset(
+        sketch_key = await storage.upload_character_asset(
             sketch_bytes, character_id, "sketch.png"
+        )
+        sketch_url = storage.generate_presigned_url(
+            sketch_key,
+            expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS,
         )
     except Exception as e:
         logger.error("character_sketch_failed", error=str(e))
@@ -73,8 +82,8 @@ async def create_character(
         "name": name,
         "relationship": relationship,
         "character_type": character_type,
-        "original_url": original_url,
-        "sketch_url": sketch_url,
+        "original_key": original_key,
+        "sketch_key": sketch_key,
         "created_at": datetime.now(timezone.utc),
     }
     
@@ -85,13 +94,24 @@ async def create_character(
         raise HTTPException(status_code=500, detail="Failed to save character data")
 
     logger.info("character_creation_complete", uid=uid, character_id=character_id)
-    return character_data
+    return character_data | {
+        "original_url": original_url,
+        "sketch_url": sketch_url,
+    }
 
 @router.get("/")
 async def get_characters(user: dict = Depends(get_current_user)):
     try:
         characters = await firebase.get_user_characters(user["uid"])
-        return characters
+        signed = []
+        for char in characters:
+            original_key = char.get("original_key") or storage.object_key_from_url(char.get("original_url"))
+            sketch_key = char.get("sketch_key") or storage.object_key_from_url(char.get("sketch_url"))
+            signed.append(char | {
+                "original_url": storage.signed_url_for_key_or_url(original_key),
+                "sketch_url": storage.signed_url_for_key_or_url(sketch_key),
+            })
+        return signed
     except Exception as e:
         logger.error("character_fetch_failed", uid=user["uid"], error=str(e), error_type=type(e).__name__)
         # Return empty list so dashboard still loads (likely missing Firestore composite index)

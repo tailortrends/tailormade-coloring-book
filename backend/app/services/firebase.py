@@ -6,6 +6,11 @@ import structlog
 logger = structlog.get_logger()
 
 
+def get_firestore():
+    """FastAPI dependency/helper for the Firestore Admin client."""
+    return firestore.client()
+
+
 async def save_book(book_id: str, data: dict) -> None:
     db = firestore.client()
     loop = asyncio.get_event_loop()

@@ -11,14 +11,15 @@ import time
 from typing import Optional
 import structlog
 from app.config import get_settings
+from app.services import storage
 from app.services.storage import _get_r2_client
 
 logger = structlog.get_logger()
-settings = get_settings()
+settings = None
 
 # ── In-memory cache ──────────────────────────────────────────────────────────
 
-_index: dict[str, list[str]] = {}  # "animals_bear:simple" → [url1, url2, url3]
+_index: dict[str, list[str]] = {}  # "animals_bear:simple" → [object_key1, object_key2]
 _index_loaded_at: float = 0.0
 _INDEX_TTL_SECONDS: float = 300.0  # 5 minutes
 
@@ -73,7 +74,7 @@ def _parse_r2_keys(keys: list[str]) -> dict[str, list[str]]:
     Key format: library/{subject_folder}/{tier}/{filename}.png
     Example:    library/animals_bear/simple/animals_bear_simple_v1.png
 
-    Returns dict keyed by "{subject_folder}:{tier}" → list of public URLs.
+    Returns dict keyed by "{subject_folder}:{tier}" → list of private R2 object keys.
     """
     index: dict[str, list[str]] = {}
     for key in keys:
@@ -83,8 +84,7 @@ def _parse_r2_keys(keys: list[str]) -> dict[str, list[str]]:
         subject_folder = parts[1]  # e.g. "animals_bear"
         tier = parts[2]  # e.g. "simple"
         lookup_key = f"{subject_folder}:{tier}"
-        url = f"{settings.r2_public_url}/{key}"
-        index.setdefault(lookup_key, []).append(url)
+        index.setdefault(lookup_key, []).append(key)
     return index
 
 
@@ -100,10 +100,11 @@ async def load_library_index(force: bool = False) -> dict[str, list[str]]:
     loop = asyncio.get_event_loop()
 
     def _list_keys() -> list[str]:
+        current_settings = settings or get_settings()
         client = _get_r2_client()
         paginator = client.get_paginator("list_objects_v2")
         keys: list[str] = []
-        for page in paginator.paginate(Bucket=settings.r2_bucket_name, Prefix="library/"):
+        for page in paginator.paginate(Bucket=current_settings.r2_bucket_name, Prefix="library/"):
             for obj in page.get("Contents", []):
                 keys.append(obj["Key"])
         return keys
@@ -175,16 +176,20 @@ async def find_match(
 
     for folder_name in candidates:
         lookup_key = f"{folder_name}:{complexity}"
-        urls = index.get(lookup_key)
-        if urls:
-            chosen = random.choice(urls)
+        object_keys = index.get(lookup_key)
+        if object_keys:
+            chosen_key = random.choice(object_keys)
+            signed_url = storage.generate_presigned_url(
+                chosen_key,
+                expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS,
+            )
             logger.info("library_hit",
                          theme=theme,
                          subject=subject_hint,
                          complexity=complexity,
                          folder=folder_name,
-                         url=chosen)
-            return chosen
+                         object_key=chosen_key)
+            return signed_url
 
     logger.info("library_miss",
                  theme=theme,

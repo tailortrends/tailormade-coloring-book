@@ -45,7 +45,7 @@ SAMPLE_R2_KEYS = [
     "library/farm_tractor/medium/farm_tractor_medium_v1.png",
 ]
 
-MOCK_PUBLIC_URL = "https://test-r2.example.com"
+MOCK_SIGNED_URL = "https://signed-r2.example.com"
 
 
 def _make_r2_response(keys: list[str]) -> dict:
@@ -60,9 +60,7 @@ class TestParseR2Keys:
     def test_parses_valid_keys(self):
         from app.services.library_cache import _parse_r2_keys
 
-        with patch("app.services.library_cache.settings") as mock_settings:
-            mock_settings.r2_public_url = MOCK_PUBLIC_URL
-            index = _parse_r2_keys(SAMPLE_R2_KEYS)
+        index = _parse_r2_keys(SAMPLE_R2_KEYS)
 
         # Check correct number of lookup keys
         assert "animals_bear:simple" in index
@@ -71,23 +69,19 @@ class TestParseR2Keys:
         assert len(index["ocean_dolphin:medium"]) == 2
         assert "dino_trex:simple" in index
 
-    def test_urls_include_public_prefix(self):
+    def test_parse_returns_private_object_keys(self):
         from app.services.library_cache import _parse_r2_keys
 
-        with patch("app.services.library_cache.settings") as mock_settings:
-            mock_settings.r2_public_url = MOCK_PUBLIC_URL
-            index = _parse_r2_keys(SAMPLE_R2_KEYS)
+        index = _parse_r2_keys(SAMPLE_R2_KEYS)
 
-        url = index["animals_bear:simple"][0]
-        assert url.startswith(MOCK_PUBLIC_URL)
-        assert "animals_bear_simple_v1.png" in url
+        object_key = index["animals_bear:simple"][0]
+        assert object_key == "library/animals_bear/simple/animals_bear_simple_v1.png"
+        assert not object_key.startswith(("http://", "https://"))
 
     def test_ignores_malformed_keys(self):
         from app.services.library_cache import _parse_r2_keys
 
-        with patch("app.services.library_cache.settings") as mock_settings:
-            mock_settings.r2_public_url = MOCK_PUBLIC_URL
-            index = _parse_r2_keys(["library/orphan", "bad_key"])
+        index = _parse_r2_keys(["library/orphan", "bad_key"])
 
         assert len(index) == 0
 
@@ -98,10 +92,9 @@ class TestFindMatch:
     def _preload_index(self):
         """Inject a mock index into the module cache."""
         import app.services.library_cache as lib
-        with patch.object(lib, "settings") as mock_settings:
-            mock_settings.r2_public_url = MOCK_PUBLIC_URL
-            lib._index = _parse_r2_keys_with_mock(SAMPLE_R2_KEYS)
-            lib._index_loaded_at = 9999999999.0  # far future — prevent reload
+        lib._index = _parse_r2_keys_with_mock(SAMPLE_R2_KEYS)
+        lib._index_loaded_at = 9999999999.0  # far future — prevent reload
+        lib.storage.generate_presigned_url = _signed_url_for_key
 
     def test_hit_animals_bear_simple(self):
         self._preload_index()
@@ -264,10 +257,8 @@ class TestGetIndexStats:
 
     def test_stats_when_loaded(self):
         import app.services.library_cache as lib
-        with patch.object(lib, "settings") as mock_settings:
-            mock_settings.r2_public_url = MOCK_PUBLIC_URL
-            lib._index = _parse_r2_keys_with_mock(SAMPLE_R2_KEYS)
-            lib._index_loaded_at = 9999999999.0
+        lib._index = _parse_r2_keys_with_mock(SAMPLE_R2_KEYS)
+        lib._index_loaded_at = 9999999999.0
 
         stats = lib.get_index_stats()
         assert stats["loaded"] is True
@@ -291,9 +282,11 @@ class TestGetIndexStats:
 def _parse_r2_keys_with_mock(keys: list[str]) -> dict[str, list[str]]:
     """Parse keys using the real function but with mocked settings."""
     from app.services.library_cache import _parse_r2_keys
-    with patch("app.services.library_cache.settings") as mock_settings:
-        mock_settings.r2_public_url = MOCK_PUBLIC_URL
-        return _parse_r2_keys(keys)
+    return _parse_r2_keys(keys)
+
+
+def _signed_url_for_key(key: str, expiry_seconds: int = 3600) -> str:
+    return f"{MOCK_SIGNED_URL}/{key}?X-Amz-Signature=test&Expires={expiry_seconds}"
 
 
 # ── Run ──────────────────────────────────────────────────────────────────────

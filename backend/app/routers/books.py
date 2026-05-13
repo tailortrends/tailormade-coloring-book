@@ -7,7 +7,7 @@ import httpx
 import structlog
 
 from app.middleware.auth import get_current_user
-from app.middleware.rate_limit import check_rate_limit, increment_usage, GenerationPermit
+from app.middleware.rate_limit import check_rate_limit, increment_usage
 from app.models.book import BookRequest, BookResponse
 from app.config import get_settings
 from app.services import (
@@ -24,12 +24,66 @@ settings = get_settings()
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 
+def _owner_uid(data: dict) -> str | None:
+    return data.get("uid") or data.get("user_id")
+
+
+def _book_pdf_key(data: dict) -> str | None:
+    return data.get("pdf_key") or storage.object_key_from_url(data.get("pdf_url"))
+
+
+def _book_page_keys(data: dict) -> list[str]:
+    if data.get("page_keys"):
+        return [str(k) for k in data.get("page_keys", []) if k]
+    return [
+        key
+        for key in (storage.object_key_from_url(url) for url in data.get("page_urls", []))
+        if key
+    ]
+
+
+def _book_response_from_data(data: dict) -> BookResponse:
+    pdf_key = _book_pdf_key(data)
+    page_keys = _book_page_keys(data)
+    pdf_url = (
+        storage.generate_presigned_url(pdf_key, expiry_seconds=storage.PDF_URL_EXPIRY_SECONDS)
+        if pdf_key else None
+    )
+    page_urls = [
+        storage.generate_presigned_url(key, expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS)
+        for key in page_keys
+    ]
+    return BookResponse(
+        book_id=data["book_id"],
+        title=data["title"],
+        status=data.get("status", "complete"),
+        pdf_url=pdf_url,
+        page_urls=page_urls,
+        page_count=data.get("page_count", len(page_urls)),
+        created_at=data["created_at"],
+        theme=data["theme"],
+        age_range=data["age_range"],
+    )
+
+
+def _signed_character_reference(character: dict) -> str | None:
+    for key_field, url_field in (("sketch_key", "sketch_url"), ("original_key", "original_url")):
+        object_key = character.get(key_field) or storage.object_key_from_url(character.get(url_field))
+        if object_key:
+            return storage.generate_presigned_url(
+                object_key,
+                expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS,
+            )
+    return None
+
+
 async def _record_failed_book(book_id: str, uid: str, request: BookRequest, error: str) -> None:
     """Save a failed book record to Firestore. Never raises."""
     try:
         await firebase.save_book(book_id, {
             "book_id": book_id,
             "uid": uid,
+            "user_id": uid,
             "title": request.title,
             "theme": request.theme,
             "age_range": request.age_range,
@@ -108,7 +162,7 @@ async def generate_book(
         characters = await firebase.get_user_characters(uid, limit=1)
         if characters:
             char = characters[0]
-            character_image_url = char.get("sketch_url") or char.get("original_url") or None
+            character_image_url = _signed_character_reference(char)
             logger.info("character_reference_attached",
                         uid=uid, book_id=book_id,
                         character_id=char.get("character_id"),
@@ -188,8 +242,8 @@ async def generate_book(
     # Step 5: Write cover hero to temp file for PDF builder (needs local path)
     cover_hero_local_path = None
     if cover_hero_bytes:
-        cover_hero_url = await storage.upload_image(cover_hero_bytes, book_id, 0)
-        logger.info("cover_hero_uploaded", book_id=book_id, url=cover_hero_url)
+        cover_hero_key = await storage.upload_image(cover_hero_bytes, book_id, 0)
+        logger.info("cover_hero_uploaded", book_id=book_id, key=cover_hero_key)
         # Also write to temp file for PDF builder
         tmp_cover = tempfile.NamedTemporaryFile(suffix=".png", delete=False, prefix="cover_hero_")
         tmp_cover.write(cover_hero_bytes)
@@ -202,10 +256,15 @@ async def generate_book(
                 path_exists=os.path.exists(cover_hero_local_path) if cover_hero_local_path else False)
 
     # Step 6: Upload interior page images to R2
-    page_urls = []
+    page_keys = []
     for i, img_bytes in enumerate(processed_bytes):
-        url = await storage.upload_image(img_bytes, book_id, i + 1)
-        page_urls.append(url)
+        key = await storage.upload_image(img_bytes, book_id, i + 1)
+        page_keys.append(key)
+
+    page_signed_urls = [
+        storage.generate_presigned_url(key, expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS)
+        for key in page_keys
+    ]
 
     # Step 7: Build PDF (cover hero + clean image-only coloring pages)
     logger.info("pdf_build_cover_debug",
@@ -215,7 +274,7 @@ async def generate_book(
         pdf_bytes = await pdf_builder.build_pdf(
             book_id=book_id,
             title=request.title,
-            page_image_urls=page_urls,
+            page_image_urls=page_signed_urls,
             age_range=request.age_range,
             theme=request.theme,
             cover_hero_path=cover_hero_local_path,
@@ -234,18 +293,23 @@ async def generate_book(
                 pass
 
     # Step 7: Upload PDF to R2
-    pdf_url = await storage.upload_pdf(pdf_bytes, book_id)
+    pdf_key = await storage.upload_pdf(pdf_bytes, book_id)
+    pdf_url = storage.generate_presigned_url(
+        pdf_key,
+        expiry_seconds=storage.PDF_URL_EXPIRY_SECONDS,
+    )
 
     # Step 8: Save to Firestore
     book_data = {
         "book_id": book_id,
         "uid": uid,
+        "user_id": uid,
         "title": request.title,
         "theme": request.theme,
         "age_range": request.age_range,
-        "page_count": len(page_urls),
-        "page_urls": page_urls,
-        "pdf_url": pdf_url,
+        "page_count": len(page_keys),
+        "page_keys": page_keys,
+        "pdf_key": pdf_key,
         "status": "complete",
         "created_at": datetime.now(timezone.utc),
     }
@@ -286,7 +350,7 @@ async def generate_book(
     await increment_usage(uid)
 
     logger.info(
-        "book_generation_complete", uid=uid, book_id=book_id, pdf_url=pdf_url,
+        "book_generation_complete", uid=uid, book_id=book_id, pdf_key=pdf_key,
         total_cost=round(total_cost, 6),
     )
 
@@ -295,8 +359,8 @@ async def generate_book(
         title=request.title,
         status="complete",
         pdf_url=pdf_url,
-        page_urls=page_urls,
-        page_count=len(page_urls),
+        page_urls=page_signed_urls,
+        page_count=len(page_keys),
         created_at=datetime.now(timezone.utc),
         theme=request.theme,
         age_range=request.age_range,
@@ -308,9 +372,26 @@ async def get_book(book_id: str, user: dict = Depends(get_current_user)):
     data = await firebase.get_book(book_id)
     if not data:
         raise HTTPException(status_code=404, detail="Book not found")
-    if data.get("uid") != user["uid"]:
+    if _owner_uid(data) != user["uid"]:
         raise HTTPException(status_code=403, detail="Not your book")
-    return BookResponse(**data)
+    return _book_response_from_data(data)
+
+
+@router.get("/{book_id}/download")
+async def get_book_download_url(book_id: str, user: dict = Depends(get_current_user)):
+    data = await firebase.get_book(book_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if _owner_uid(data) != user["uid"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    pdf_key = _book_pdf_key(data)
+    if not pdf_key:
+        raise HTTPException(status_code=404, detail="PDF not available")
+    signed_url = storage.generate_presigned_url(
+        pdf_key,
+        expiry_seconds=storage.PDF_URL_EXPIRY_SECONDS,
+    )
+    return {"download_url": signed_url, "expires_in": storage.PDF_URL_EXPIRY_SECONDS}
 
 
 @router.delete("/{book_id}", status_code=204)
@@ -318,7 +399,7 @@ async def delete_book(book_id: str, user: dict = Depends(get_current_user)):
     data = await firebase.get_book(book_id)
     if not data:
         raise HTTPException(status_code=404, detail="Book not found")
-    if data.get("uid") != user["uid"]:
+    if _owner_uid(data) != user["uid"]:
         raise HTTPException(status_code=403, detail="Not your book")
 
     # Delete R2 assets (best-effort — don't fail the request if cleanup errors)
@@ -334,4 +415,4 @@ async def delete_book(book_id: str, user: dict = Depends(get_current_user)):
 @router.get("/", response_model=list[BookResponse])
 async def list_books(user: dict = Depends(get_current_user)):
     books = await firebase.get_user_books(user["uid"])
-    return [BookResponse(**b) for b in books]
+    return [_book_response_from_data(b) for b in books]
