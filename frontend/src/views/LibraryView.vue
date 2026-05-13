@@ -35,16 +35,24 @@ function themeColor(theme: string): string {
   return THEME_COLORS[theme] ?? 'text-slate-500'
 }
 
-function formatDate(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return dateStr
+function parseDate(value: any): Date {
+  if (!value) return new Date(NaN)
+  if (typeof value === 'object' && 'seconds' in value) {
+    return new Date(value.seconds * 1000)
   }
+  if (typeof value === 'string') return new Date(value)
+  if (typeof value === 'number') return new Date(value)
+  return new Date(NaN)
+}
+
+function formatDate(value: any): string {
+  const date = parseDate(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 onMounted(() => {
