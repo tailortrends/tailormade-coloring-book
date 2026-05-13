@@ -1,3 +1,14 @@
+# ============================================================
+# ARCHIVED - DO NOT RUN
+# This script was used during Phase 2 development.
+# The LoRA endpoint it references no longer exists.
+# Running this will fail and may consume credits.
+# ============================================================
+raise RuntimeError(
+    "phase_2_generator is archived and should not be run. "
+    "See backend/app/services/image_gen.py for current image generation."
+)
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 import os

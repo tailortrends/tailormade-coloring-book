@@ -1,31 +1,52 @@
-# --- System ---
+# System
 .DS_Store
 Thumbs.db
 
-# --- Python / Backend ---
+# Python / backend
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 .uv/
-.env
 .python-version
 
-# --- CRITICAL: Security (Firebase & R2) ---
-# This ignores your specific Firebase JSON file
-backend/app/tailormade-coloring-book-firebase-adminsdk-fbsvc-*.json
-# Ignores any other secret JSON files in app
-backend/app/*.json
-# Re-allow pyproject.toml if you accidentally ignored it
-!pyproject.toml
-
-# --- Node / Frontend ---
+# Node / frontend
 node_modules/
 dist/
 dist-ssr/
 *.local
 
-# --- IDEs ---
+# Secrets
+*.env
+.env
+.env.local
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+!phase_2_generator/.env.example
+firebase-service-account*.json
+*-service-account*.json
+*firebase-adminsdk*.json
+*.pem
+*.key
+
+# Generated artifacts
+backend/generated/
+backend/outputs/
+*.pdf
+*.safetensors
+*.db
+*.sqlite
+
+# Project logs with potential secrets
+tailormade-coloring-book-project-log.md
+
+# Large assets
+frontend/public/logos/*.png
+screenshots/
+
+# IDEs
 .vscode/
 .idea/
 *.suo
