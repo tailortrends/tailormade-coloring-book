@@ -1,8 +1,107 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnedByAuth(data) {
+      return signedIn()
+        && (data.uid == request.auth.uid || data.user_id == request.auth.uid);
+    }
+
+    function protectedUserFields() {
+      return [
+        'subscription',
+        'subscription_tier',
+        'subscription_active',
+        'credits',
+        'one_time_credits',
+        'quota',
+        'tier',
+        'books_generated_total',
+        'books_generated_this_month',
+        'month_reset',
+        'stripe_customer_id',
+        'stripe_subscription_id'
+      ];
+    }
+
+    function hasNoProtectedUserFieldsOnCreate() {
+      return !request.resource.data.keys().hasAny(protectedUserFields());
+    }
+
+    function hasNoProtectedUserFieldChanges() {
+      return !request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasAny(protectedUserFields());
+    }
+
+    // Users can only access their own user document, and clients may not
+    // mutate billing, quota, credit, or Stripe-owned fields.
+    match /users/{userId} {
+      allow read: if isSelf(userId);
+      allow create: if isSelf(userId) && hasNoProtectedUserFieldsOnCreate();
+      allow update: if isSelf(userId) && hasNoProtectedUserFieldChanges();
+      allow delete: if false;
+    }
+
+    // Books: users can only access their own books. New backend records use
+    // both uid and user_id for compatibility with existing data.
+    match /books/{bookId} {
+      allow read, update, delete: if isOwnedByAuth(resource.data);
+      allow create: if isOwnedByAuth(request.resource.data);
+    }
+
+    // Character records and child profiles are owner-scoped.
+    match /characters/{characterId} {
+      allow read, update, delete: if isOwnedByAuth(resource.data);
+      allow create: if isOwnedByAuth(request.resource.data);
+    }
+
+    match /profiles/{profileId} {
+      allow read, update, delete: if isOwnedByAuth(resource.data);
+      allow create: if isOwnedByAuth(request.resource.data);
+    }
+
+    // Usage is backend-owned; clients can only inspect their own counters.
+    match /usage/{userId} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
+
+    // Public library metadata is readable by authenticated users only.
+    match /library/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /library_images/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Backend/admin-owned collections.
+    match /analytics/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /costs/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /settings/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Deny everything else.
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
