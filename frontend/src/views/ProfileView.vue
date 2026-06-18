@@ -13,28 +13,40 @@ const { booksUsed, booksLimit, booksRemaining, percentUsed } = useBookQuota()
 
 const showDeleteConfirm = ref(false)
 const deleteLoading = ref(false)
+const signOutLoading = ref(false)
+const actionError = ref('')
 const copySuccess = ref(false)
 
 async function handleSignOut() {
-  await signOut(auth)
-  authStore.clearUser()
-  router.push('/')
-}
-
-async function handleDeleteAccount() {
-  deleteLoading.value = true
+  actionError.value = ''
+  signOutLoading.value = true
   try {
-    const user = auth.currentUser
-    if (user) {
-      await deleteUser(user)
-    }
+    await signOut(auth)
     authStore.clearUser()
     router.push('/')
   } catch {
-    // Re-auth may be required; redirect to login
-    await signOut(auth)
+    actionError.value = 'Could not sign out. Please try again.'
+  } finally {
+    signOutLoading.value = false
+  }
+}
+
+async function handleDeleteAccount() {
+  actionError.value = ''
+  deleteLoading.value = true
+  try {
+    const user = auth.currentUser
+    if (!user) {
+      throw new Error('No signed-in user')
+    }
+    await deleteUser(user)
     authStore.clearUser()
-    router.push('/login')
+    router.push('/')
+  } catch (err) {
+    const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : ''
+    actionError.value = code === 'auth/requires-recent-login'
+      ? 'Please sign in again before deleting your account.'
+      : 'Could not delete your account. Please try again.'
   } finally {
     deleteLoading.value = false
   }
@@ -54,6 +66,10 @@ function copyReferralLink() {
 
     <main class="max-w-2xl mx-auto px-4 py-10 space-y-6">
       <h1 class="text-3xl font-bold tracking-tight">My Account</h1>
+
+      <div v-if="actionError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300" role="alert">
+        {{ actionError }}
+      </div>
 
       <!-- Section 1: User Info -->
       <section class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
@@ -129,9 +145,10 @@ function copyReferralLink() {
         <div class="flex flex-wrap gap-3">
           <button
             @click="handleSignOut"
-            class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            :disabled="signOutLoading"
+            class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Sign Out
+            {{ signOutLoading ? 'Signing out...' : 'Sign Out' }}
           </button>
           <button
             v-if="!showDeleteConfirm"

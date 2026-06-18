@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/firebase'
@@ -10,11 +11,21 @@ const router = useRouter()
 const authStore = useAuthStore()
 const profilesStore = useProfilesStore()
 const { booksRemaining, isAtLimit } = useBookQuota()
+const signOutLoading = ref(false)
+const signOutError = ref('')
 
 async function handleSignOut() {
-  await signOut(auth)
-  authStore.clearUser()
-  router.push('/')
+  signOutError.value = ''
+  signOutLoading.value = true
+  try {
+    await signOut(auth)
+    authStore.clearUser()
+    router.push('/')
+  } catch {
+    signOutError.value = 'Could not sign out. Please try again.'
+  } finally {
+    signOutLoading.value = false
+  }
 }
 </script>
 
@@ -65,11 +76,15 @@ async function handleSignOut() {
           </div>
           <span class="text-sm font-semibold">{{ authStore.displayName }}</span>
         </RouterLink>
+        <p v-if="signOutError" class="hidden md:block max-w-48 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+          {{ signOutError }}
+        </p>
         <button
           @click="handleSignOut"
-          class="flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors px-4 py-2 text-slate-700 dark:text-slate-200 text-sm font-semibold"
+          :disabled="signOutLoading"
+          class="flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors px-4 py-2 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Sign Out
+          {{ signOutLoading ? 'Signing out...' : 'Sign Out' }}
         </button>
       </div>
 
