@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useProfilesStore } from '@/stores/profiles'
 import { RouterLink } from 'vue-router'
+import { getApiErrorDetail } from '@/utils/errors'
 
 const router = useRouter()
 const profilesStore = useProfilesStore()
@@ -21,8 +22,8 @@ async function handleDelete(profileId: string) {
   deletingId.value = profileId
   try {
     await profilesStore.deleteProfile(profileId)
-  } catch (e: any) {
-    deleteError.value = e?.body?.detail || 'Failed to delete profile'
+  } catch (e: unknown) {
+    deleteError.value = getApiErrorDetail(e, 'Failed to delete profile')
   } finally {
     deletingId.value = null
   }

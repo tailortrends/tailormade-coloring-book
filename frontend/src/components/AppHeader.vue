@@ -9,7 +9,7 @@ import { useBookQuota } from '@/composables/useBookQuota'
 const router = useRouter()
 const authStore = useAuthStore()
 const profilesStore = useProfilesStore()
-const { booksRemaining, booksLimit, isAtLimit } = useBookQuota()
+const { booksRemaining, isAtLimit } = useBookQuota()
 
 async function handleSignOut() {
   await signOut(auth)

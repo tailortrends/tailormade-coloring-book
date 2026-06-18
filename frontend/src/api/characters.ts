@@ -7,7 +7,7 @@ export interface Character {
   character_type: string
   original_url: string
   sketch_url: string
-  created_at: any
+  created_at: unknown
 }
 
 export function createCharacter(formData: FormData): Promise<Character> {

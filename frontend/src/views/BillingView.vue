@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { createPortalSession } from '@/api/stripe'
 import { api } from '@/api/client'
 import { RouterLink } from 'vue-router'
+import { getApiErrorDetail } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const loading = ref(false)
@@ -73,8 +74,8 @@ async function openPortal() {
   portalLoading.value = true
   try {
     await createPortalSession()
-  } catch (e: any) {
-    error.value = e?.body?.detail || 'Failed to open subscription portal. Please try again.'
+  } catch (e: unknown) {
+    error.value = getApiErrorDetail(e, 'Failed to open subscription portal. Please try again.')
     portalLoading.value = false
   }
 }

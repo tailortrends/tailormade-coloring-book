@@ -3,10 +3,11 @@ import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import CharacterForm from '@/components/CharacterForm.vue'
 import AppHeader from '@/components/AppHeader.vue'
+import type { Character } from '@/api/characters'
 
-const createdCharacter = ref<any>(null)
+const createdCharacter = ref<Character | null>(null)
 
-function handleCharacterCreated(data: any) {
+function handleCharacterCreated(data: Character) {
   createdCharacter.value = data
 }
 

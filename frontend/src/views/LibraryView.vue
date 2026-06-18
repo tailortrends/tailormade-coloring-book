@@ -35,17 +35,21 @@ function themeColor(theme: string): string {
   return THEME_COLORS[theme] ?? 'text-slate-500'
 }
 
-function parseDate(value: any): Date {
+interface TimestampLike {
+  seconds: number
+}
+
+function parseDate(value: unknown): Date {
   if (!value) return new Date(NaN)
   if (typeof value === 'object' && 'seconds' in value) {
-    return new Date(value.seconds * 1000)
+    return new Date((value as TimestampLike).seconds * 1000)
   }
   if (typeof value === 'string') return new Date(value)
   if (typeof value === 'number') return new Date(value)
   return new Date(NaN)
 }
 
-function formatDate(value: any): string {
+function formatDate(value: unknown): string {
   const date = parseDate(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString('en-US', {

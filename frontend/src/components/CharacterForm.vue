@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createCharacter as apiCreateCharacter } from '@/api/characters'
+import { createCharacter as apiCreateCharacter, type Character } from '@/api/characters'
+import { getApiErrorDetail } from '@/utils/errors'
 
 const emit = defineEmits<{
-  characterCreated: [data: any]
+  characterCreated: [data: Character]
 }>()
 
 const characterName = ref('')
@@ -75,9 +76,9 @@ async function handleSubmit() {
     relationship.value = ''
     characterType.value = 'person'
     removeImage()
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Character creation failed:', error)
-    errorMessage.value = error?.body?.detail || 'Something went wrong. Please try again.'
+    errorMessage.value = getApiErrorDetail(error, 'Something went wrong. Please try again.')
   } finally {
     isSubmitting.value = false
   }

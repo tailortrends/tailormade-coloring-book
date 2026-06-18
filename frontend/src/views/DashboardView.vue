@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useProfilesStore } from '@/stores/profiles'
@@ -11,15 +11,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 const profilesStore = useProfilesStore()
 
-// We get our reactive data payload and the fetch function from the composable
-const { data: dashboard, fetchDashboard } = useDashboard()
-
-// Hardcoded updates to show as part of notifications
-const updates = [
-  { text: "📸 Photo-to-book mode coming soon!", subtext: "Turn event photos into coloring books" },
-  { text: "🎨 New complexity tiers available", subtext: "Books now adapt to your child's age" },
-  { text: "⚡ Faster generation", subtext: "Books now generate 40% faster" }
-]
+// We get our reactive data payload from the composable
+const { data: dashboard } = useDashboard()
 
 // Determine which Pro Tip to show based on day of month
 const proTips = [
@@ -45,14 +38,14 @@ function navigateToCreate() {
   }
 }
 
-function getInitials(title: string) {
-  return title.slice(0, 2).toUpperCase()
+interface TimestampLike {
+  seconds: number
 }
 
-function parseDate(value: any): Date {
+function parseDate(value: unknown): Date {
   if (!value) return new Date()
   if (typeof value === 'object' && 'seconds' in value) {
-    return new Date(value.seconds * 1000)
+    return new Date((value as TimestampLike).seconds * 1000)
   }
   if (typeof value === 'string') {
     return new Date(value)
@@ -63,7 +56,7 @@ function parseDate(value: any): Date {
   return new Date()
 }
 
-function formatBookDate(value: any): string {
+function formatBookDate(value: unknown): string {
   const date = parseDate(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })

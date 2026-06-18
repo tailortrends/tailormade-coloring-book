@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useProfilesStore } from '@/stores/profiles'
 import { useFormValidation } from '@/composables/useFormValidation'
 import { profileSchema } from '@/validation/schemas'
+import { getApiErrorDetail } from '@/utils/errors'
 
 const router = useRouter()
 const profilesStore = useProfilesStore()
@@ -54,8 +55,8 @@ async function handleSave() {
   try {
     await profilesStore.createProfile(formData.value)
     router.push('/profiles')
-  } catch (e: any) {
-    submitError.value = e?.body?.detail || 'Failed to create profile. Please try again.'
+  } catch (e: unknown) {
+    submitError.value = getApiErrorDetail(e, 'Failed to create profile. Please try again.')
   } finally {
     isSubmitting.value = false
   }

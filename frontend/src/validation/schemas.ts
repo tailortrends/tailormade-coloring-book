@@ -10,8 +10,8 @@ export const bookGenerateSchema = z.object({
     .string()
     .min(2, 'Theme is required'),
   age_range: z.enum(['2-4', '4-6', '6-9', '9-12'], {
-    errorMap: () => ({ message: 'Please select an age range' }),
-  } as any),
+    message: 'Please select an age range',
+  }),
   page_count: z
     .number()
     .int()

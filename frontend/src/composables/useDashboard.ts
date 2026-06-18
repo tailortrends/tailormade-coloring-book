@@ -1,9 +1,11 @@
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getFirestore, doc, getDoc } from 'firebase/firestore'
 import { useBooksStore } from '@/stores/books'
 import * as charactersApi from '@/api/characters'
-import { getLibraryStats, type LibraryStats } from '@/api/library'
+import type { Character } from '@/api/characters'
+import { getLibraryStats } from '@/api/library'
+
 export interface BookRecord {
   id: string
   title: string
@@ -11,7 +13,7 @@ export interface BookRecord {
   page_count: number
   pdf_url: string
   cover_url: string
-  created_at: any
+  created_at: unknown
   status: string
 }
 
@@ -36,7 +38,7 @@ export interface DashboardData {
   topThemeCount: number
   
   // Custom Characters
-  customCharacters: any[]
+  customCharacters: Character[]
 
   // Library stats
   libraryStats: {
@@ -189,7 +191,7 @@ export function useDashboard() {
         data.value.libraryStats = null
       }
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Dashboard fetch error:', err)
       data.value.error = 'Could not load dashboard data.'
     } finally {

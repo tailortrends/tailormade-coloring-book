@@ -5,6 +5,7 @@ import AppFooter from '@/components/AppFooter.vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { createCheckoutSession } from '@/api/stripe'
+import { getApiErrorDetail } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const loadingPlan = ref<string | null>(null)
@@ -28,8 +29,8 @@ async function subscribe(plan: string, priceId: string) {
   try {
     const base = window.location.origin
     await createCheckoutSession(priceId, `${base}/billing?success=1`, `${base}/pricing?canceled=1`)
-  } catch (e: any) {
-    error.value = e?.body?.detail || 'Something went wrong. Please try again.'
+  } catch (e: unknown) {
+    error.value = getApiErrorDetail(e, 'Something went wrong. Please try again.')
     loadingPlan.value = null
   }
 }
