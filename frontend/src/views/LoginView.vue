@@ -72,7 +72,7 @@ function handleEmailLogin() {
       <div class="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-slate-100 dark:border-slate-700">
         <!-- Left Side: Image/Banner -->
         <div class="md:w-5/12 relative bg-primary/5 hidden md:flex flex-col">
-          <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAyBitzfFDQ7RA12l9Ba08CKt0lZO4L0uVkkspOLwx3sft46Wvt3bacPL7lMDvje7rrNS58Uw3xk1u3sFZKwaHNJRGPEkrdTskAVg2ZMg4TmvhF3BVPTU_1Cr9ESFlvy6s02hZSgtFOj30UFVdaZIDGlPh3cmAA-e6XMKlwhIclLa1dHpSBGZ2f3ZWCR8ysf9VQJE-zYWtP6URE7_jQdjdNOmDrxNElr7qRwn6-azZseZ5_i5X05VlsPfubSHq41tbHSHfHtKRuKZD8');"></div>
+          <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('/images/login-hero.png');"></div>
           <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
           <div class="relative z-10 mt-auto p-10 text-white">
             <div class="mb-4 text-primary bg-white/90 backdrop-blur rounded-full w-12 h-12 flex items-center justify-center shadow-lg">

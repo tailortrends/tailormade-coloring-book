@@ -53,7 +53,7 @@ import { RouterLink } from 'vue-router'
               <div class="relative transform rotate-y-6 lg:rotate-y-12 transition-transform hover:rotate-y-0 duration-700 ease-out group">
                 <div class="absolute -inset-4 bg-gradient-to-r from-primary via-accent-purple to-accent-pink rounded-[2.5rem] opacity-30 blur-2xl group-hover:opacity-40 transition-opacity"></div>
                 <div class="relative rounded-[2rem] overflow-hidden shadow-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 aspect-[4/3]">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWcwbtu57U-1J6CTlADAR0iXLvsct014tFUyxYHBTScWONEiMXHn7zNGBcV2VWqNcUURNy52lAo7FR8DwFPqiNi2o5BgSDlSucTZL_Z4Uk9y0dDqeZfF31taXaZzTKiYspCqb1wrthlFMP4zqtmVh9DzC4BxkiRPVef0kPjdW-zMV2NyijQTm8mHI2LdW-8EICAQFq2-WtkhEk8MAu_H0heChMKit0qOzbGcLR59mOQFsGzzjZre1ckDNKATF78CMervbCUVY9BDHd" alt="Child coloring" class="w-full h-full object-cover transform scale-105 group-hover:scale-100 transition-transform duration-700" />
+                  <img src="/images/home-child-coloring.png" alt="Child coloring" class="w-full h-full object-cover transform scale-105 group-hover:scale-100 transition-transform duration-700" />
                   <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none"></div>
                   
                   <div class="absolute bottom-6 left-6 right-6 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl flex items-center gap-4">
