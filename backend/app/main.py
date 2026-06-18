@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
 
     try:
         settings = get_settings()
+        settings.validate_launch_environment()
         logger.info("config_loaded", env=settings.app_env)
     except Exception as e:
         print(f"\n❌ Missing required environment variables:\n{e}\n")

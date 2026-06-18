@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+import os
 
 
 class Settings(BaseSettings):
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str  # NO default
 
     # Firebase
+    firebase_service_account_json: str = ""
     firebase_service_account_path: str = "./app/tailormade-coloring-book-firebase-adminsdk-fbsvc-677adebcf5.json"
     firebase_project_id: str  # NO default
 
@@ -85,6 +87,55 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    def validate_launch_environment(self) -> None:
+        """Fail fast when required runtime integrations are not configured."""
+        missing: list[str] = []
+
+        required = [
+            "fal_key",
+            "anthropic_api_key",
+            "firebase_project_id",
+            "r2_account_id",
+            "r2_access_key_id",
+            "r2_secret_access_key",
+            "r2_bucket_name",
+            "r2_public_url",
+            "stripe_webhook_secret",
+            "stripe_family_price_id",
+            "stripe_teacher_price_id",
+            "stripe_single_price_id",
+        ]
+        for field_name in required:
+            if not str(getattr(self, field_name, "")).strip():
+                missing.append(field_name.upper())
+
+        if self.stripe_mode not in {"test", "live"}:
+            missing.append("STRIPE_MODE must be 'test' or 'live'")
+        elif self.stripe_mode == "live":
+            if not self.stripe_live_secret_key.strip():
+                missing.append("STRIPE_LIVE_SECRET_KEY")
+            if not self.stripe_live_publishable_key.strip():
+                missing.append("STRIPE_LIVE_PUBLISHABLE_KEY")
+        else:
+            if not self.stripe_test_secret_key.strip():
+                missing.append("STRIPE_TEST_SECRET_KEY")
+            if not self.stripe_test_publishable_key.strip():
+                missing.append("STRIPE_TEST_PUBLISHABLE_KEY")
+
+        if self.is_production:
+            has_inline_firebase = bool(self.firebase_service_account_json.strip())
+            has_file_firebase = bool(
+                self.firebase_service_account_path.strip()
+                and os.path.exists(self.firebase_service_account_path)
+            )
+            if not (has_inline_firebase or has_file_firebase):
+                missing.append("FIREBASE_SERVICE_ACCOUNT_JSON or valid FIREBASE_SERVICE_ACCOUNT_PATH")
+
+        if missing:
+            raise ValueError(
+                "Missing required environment variables: " + ", ".join(missing)
+            )
 
 
 @lru_cache()
