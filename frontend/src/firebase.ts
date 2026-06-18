@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyA13wwkVymQrqkAtiuQ52QSlb_BPTatjeI',
-  authDomain: 'tailormade-coloring-book.firebaseapp.com',
-  projectId: 'tailormade-coloring-book',
-  storageBucket: 'tailormade-coloring-book.firebasestorage.app',
-  messagingSenderId: '472850519072',
-  appId: '1:472850519072:web:bb0782216626e8f65f1845',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
 }
 
 const app = initializeApp(firebaseConfig)
