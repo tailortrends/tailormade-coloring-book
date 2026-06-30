@@ -1,6 +1,10 @@
 import { getAuth } from 'firebase/auth'
 
-const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') as string
+const BASE_URL = (() => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  if (import.meta.env.PROD) return 'https://tailormade-coloring-book-production.up.railway.app'
+  return 'http://localhost:8000'
+})()
 const DEFAULT_TIMEOUT_MS = 30_000
 
 interface RequestOptions extends Omit<RequestInit, 'body' | 'signal'> {
