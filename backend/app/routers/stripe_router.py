@@ -265,6 +265,10 @@ async def _handle_checkout_completed(session: dict) -> None:
     """checkout.session.completed — set tier and subscription info."""
     uid = session.get("metadata", {}).get("firebase_uid")
     customer_id = session.get("customer")
+    customer_email = (
+        (session.get("customer_details") or {}).get("email")
+        or session.get("customer_email")
+    )
 
     if not uid and customer_id:
         uid = await _get_uid_from_customer(customer_id)
@@ -298,6 +302,17 @@ async def _handle_checkout_completed(session: dict) -> None:
         )
         logger.info("subscription_activated", uid=uid, tier=tier)
 
+        # Non-fatal: email failure never blocks checkout flow
+        try:
+            from app.services.email import send_purchase_confirmed
+
+            send_purchase_confirmed(
+                to_email=customer_email or "",
+                plan_name=tier,
+            )
+        except Exception as e:
+            logger.warning("purchase_email_failed_non_fatal", uid=uid, error=str(e))
+
     elif mode == "payment":
         price_id = session.get("metadata", {}).get("price_id")
         if price_id != settings.stripe_single_price_id:
@@ -319,6 +334,17 @@ async def _handle_checkout_completed(session: dict) -> None:
             ),
         )
         logger.info("one_time_credit_added", uid=uid)
+
+        # Non-fatal: email failure never blocks checkout flow
+        try:
+            from app.services.email import send_purchase_confirmed
+
+            send_purchase_confirmed(
+                to_email=customer_email or "",
+                plan_name="single",
+            )
+        except Exception as e:
+            logger.warning("purchase_email_failed_non_fatal", uid=uid, error=str(e))
     else:
         raise RuntimeError(f"Unsupported checkout mode: {mode}")
 

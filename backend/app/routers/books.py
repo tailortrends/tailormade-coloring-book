@@ -186,6 +186,7 @@ async def generate_book(
     user: dict = Depends(get_current_user),
 ):
     uid = user["uid"]
+    user_email = user.get("email")
     tier = user.get("tier", "free")
     book_id = str(uuid.uuid4())
 
@@ -201,7 +202,14 @@ async def generate_book(
     permit = await check_rate_limit(uid, tier)
 
     try:
-        return await _generate_book_after_reservation(request, uid, tier, book_id, permit)
+        return await _generate_book_after_reservation(
+            request,
+            uid,
+            user_email,
+            tier,
+            book_id,
+            permit,
+        )
     except HTTPException as e:
         await release_quota_reservation(uid, permit)
         if e.status_code >= 500:
@@ -222,6 +230,7 @@ async def generate_book(
 async def _generate_book_after_reservation(
     request: BookRequest,
     uid: str,
+    user_email: str | None,
     tier: str,
     book_id: str,
     permit: GenerationPermit,
@@ -442,6 +451,22 @@ async def _generate_book_after_reservation(
 
     # Increment usage ONLY after successful generation
     await increment_usage(uid, permit)
+
+    # Non-fatal: email failure never blocks book delivery
+    try:
+        from app.services.email import send_book_ready
+
+        child_name = next(
+            (name.strip() for name in request.character_names or [] if name and name.strip()),
+            "your child",
+        )
+        send_book_ready(
+            to_email=user_email or "",
+            child_name=child_name,
+            download_url=f"https://tailormadecoloringbook.app/books/{book_id}",
+        )
+    except Exception as e:
+        logger.warning("book_ready_email_failed_non_fatal", book_id=book_id, error=str(e))
 
     logger.info(
         "book_generation_complete", uid=uid, book_id=book_id, pdf_key=pdf_key,

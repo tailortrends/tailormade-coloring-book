@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from typing import Optional
 import os
 
 
@@ -68,6 +69,11 @@ class Settings(BaseSettings):
 
     # Sentry
     sentry_dsn: str = ""  # Backend Sentry DSN (from env)
+
+    # Resend Email (optional — non-blocking transactional emails)
+    resend_api_key: Optional[str] = None
+    resend_from_email: str = "noreply@tailormadecoloringbook.app"
+    resend_from_name: str = "TailorMade Coloring Book"
 
     # Generation limits
     max_pages: int = 15
