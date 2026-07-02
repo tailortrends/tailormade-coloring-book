@@ -198,6 +198,47 @@ async def create_portal_session(user: dict = Depends(get_current_user)):
 
 # ── Webhook (NO auth middleware) ─────────────────────────────────────────────
 
+async def _claim_event(event_id: str) -> bool:
+    """Atomically claim a Stripe event id for processing.
+
+    Returns True if this is the first time we've seen the event (caller should
+    process it), or False if it was already claimed (duplicate → no-op). Backed
+    by a create-if-absent write to stripe_events/{event_id}, which the Firestore
+    server rejects with AlreadyExists on a second attempt.
+    """
+    from firebase_admin import firestore as fs
+    from google.api_core.exceptions import AlreadyExists
+
+    db = fs.client()
+    loop = asyncio.get_event_loop()
+
+    def _create() -> bool:
+        from datetime import datetime, timezone
+        try:
+            db.collection("stripe_events").document(event_id).create(
+                {"processed_at": datetime.now(timezone.utc)}
+            )
+            return True
+        except AlreadyExists:
+            return False
+
+    return await loop.run_in_executor(None, _create)
+
+
+async def _release_event(event_id: str) -> None:
+    """Release an event claim so Stripe's retry can reprocess after a failure."""
+    from firebase_admin import firestore as fs
+    db = fs.client()
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: db.collection("stripe_events").document(event_id).delete(),
+        )
+    except Exception as e:
+        logger.warning("stripe_event_release_failed", event_id=event_id, error=str(e))
+
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events. No Firebase auth — uses Stripe signature."""
@@ -215,20 +256,35 @@ async def stripe_webhook(request: Request):
         logger.warning("stripe_webhook_invalid_signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+    event_id = event["id"]
     event_type = event["type"]
     data_object = event["data"]["object"]
-    logger.info("stripe_webhook_received", event_type=event_type, event_id=event["id"])
+    logger.info("stripe_webhook_received", event_type=event_type, event_id=event_id)
 
-    if event_type == "checkout.session.completed":
-        await _handle_checkout_completed(data_object)
-    elif event_type == "customer.subscription.updated":
-        await _handle_subscription_updated(data_object)
-    elif event_type == "customer.subscription.deleted":
-        await _handle_subscription_deleted(data_object)
-    elif event_type == "invoice.payment_failed":
-        await _handle_payment_failed(data_object)
-    else:
-        logger.info("stripe_webhook_unhandled", event_type=event_type)
+    # Idempotency: claim the event before doing any state change. Stripe retries
+    # any non-2xx (and on its own schedule), so without this a redelivered
+    # checkout would grant credits twice.
+    newly_claimed = await _claim_event(event_id)
+    if not newly_claimed:
+        logger.info("stripe_webhook_duplicate_ignored", event_id=event_id, event_type=event_type)
+        return {"status": "ok", "duplicate": True}
+
+    try:
+        if event_type == "checkout.session.completed":
+            await _handle_checkout_completed(data_object)
+        elif event_type == "customer.subscription.updated":
+            await _handle_subscription_updated(data_object)
+        elif event_type == "customer.subscription.deleted":
+            await _handle_subscription_deleted(data_object)
+        elif event_type == "invoice.payment_failed":
+            await _handle_payment_failed(data_object)
+        else:
+            logger.info("stripe_webhook_unhandled", event_type=event_type)
+    except Exception:
+        # Processing failed — release the claim so Stripe's retry reprocesses
+        # this event rather than hitting the duplicate no-op path forever.
+        await _release_event(event_id)
+        raise
 
     return {"status": "ok"}
 

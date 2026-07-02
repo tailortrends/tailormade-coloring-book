@@ -55,6 +55,16 @@ client = TestClient(app, raise_server_exceptions=False)
 AUTH_HEADER = {"Authorization": "Bearer dev-test-token"}
 
 
+@pytest.fixture(autouse=True)
+def _stub_event_dedup():
+    """The webhook now claims each event id in Firestore for idempotency. There
+    is no Firestore in these tests, so default the claim to 'first time seen'.
+    Tests that exercise idempotency re-patch _claim_event with their own state."""
+    with patch.object(stripe_mod, "_claim_event", AsyncMock(return_value=True)), \
+         patch.object(stripe_mod, "_release_event", AsyncMock(return_value=None)):
+        yield
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _make_webhook_event(event_type: str, data_object: dict) -> dict:
@@ -242,3 +252,87 @@ def test_subscription_deleted_resets_to_free():
     finally:
         stripe_mod.update_user_stripe = original_update
         stripe_mod._get_uid_from_customer = original_get_uid
+
+
+# ── Test 5: webhook idempotency — replayed event processed exactly once ───────
+
+def _post_event(event: dict):
+    return client.post(
+        "/api/v1/stripe/webhook",
+        content=json.dumps(event).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "stripe-signature": "t=123,v1=fakesig",
+        },
+    )
+
+
+def test_webhook_idempotent_on_replay():
+    """Delivering the same event id twice must process the handler only once."""
+    event = _make_webhook_event("checkout.session.completed", {
+        "id": "cs_replay",
+        "metadata": {"firebase_uid": "user-abc", "price_id": "price_single_789"},
+        "customer": "cus_test_123",
+        "mode": "payment",
+    })
+
+    seen: set[str] = set()
+
+    async def fake_claim(event_id: str) -> bool:
+        if event_id in seen:
+            return False
+        seen.add(event_id)
+        return True
+
+    async def fake_release(event_id: str) -> None:
+        seen.discard(event_id)
+
+    handler_calls = []
+
+    async def fake_handler(obj):
+        handler_calls.append(obj)
+
+    with patch.object(stripe_mod, "_claim_event", fake_claim), \
+         patch.object(stripe_mod, "_release_event", fake_release), \
+         patch.object(stripe_mod, "_handle_checkout_completed", fake_handler), \
+         patch("stripe.Webhook.construct_event", return_value=event):
+        r1 = _post_event(event)
+        r2 = _post_event(event)  # same event id — a Stripe redelivery
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r2.json().get("duplicate") is True
+    assert len(handler_calls) == 1  # processed exactly once
+
+
+def test_one_time_payment_adds_single_credit():
+    """A one-time (mode=payment) checkout increments one_time_credits once."""
+    event = _make_webhook_event("checkout.session.completed", {
+        "id": "cs_single",
+        "metadata": {"firebase_uid": "user-xyz", "price_id": "price_single_789"},
+        "customer": "cus_single_1",
+        "mode": "payment",
+    })
+
+    captured = {}
+
+    class _FakeDoc:
+        def set(self, data, merge=False):
+            captured["data"] = data
+            captured["merge"] = merge
+
+    class _FakeCollection:
+        def document(self, _uid):
+            return _FakeDoc()
+
+    class _FakeDB:
+        def collection(self, _name):
+            return _FakeCollection()
+
+    with patch("stripe.Webhook.construct_event", return_value=event), \
+         patch("firebase_admin.firestore.client", return_value=_FakeDB()), \
+         patch("google.cloud.firestore_v1.Increment", lambda n: f"INC({n})"):
+        response = _post_event(event)
+
+    assert response.status_code == 200
+    assert captured["data"]["one_time_credits"] == "INC(1)"
