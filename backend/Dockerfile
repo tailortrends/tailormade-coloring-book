@@ -1,18 +1,7 @@
 FROM python:3.12-slim
 
-# WeasyPrint system dependencies (cairo, pango, gdk-pixbuf, harfbuzz, fonts)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcairo2 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libpangoft2-1.0-0 \
-    libgdk-pixbuf-2.0-0 \
-    libharfbuzz0b \
-    libffi-dev \
-    shared-mime-info \
-    fontconfig \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+# PDF generation uses ReportLab (pure Python, base-14 fonts built in) and Pillow
+# (manylinux wheels bundle their own libs), so no system packages are required.
 
 WORKDIR /app
 
