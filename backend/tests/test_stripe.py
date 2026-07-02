@@ -33,6 +33,7 @@ with patch.dict("sys.modules", {
     os.environ.setdefault("R2_BUCKET_NAME", "test")
     os.environ.setdefault("R2_PUBLIC_URL", "https://test.r2.dev")
     os.environ.setdefault("APP_ENV", "development")
+    os.environ.setdefault("DEBUG", "true")  # required to honor the dev-test-token bypass
     os.environ.setdefault("STRIPE_MODE", "test")
     os.environ.setdefault("STRIPE_TEST_SECRET_KEY", "test_secret_fake")
     os.environ.setdefault("STRIPE_TEST_PUBLISHABLE_KEY", "pk_test_fake")
