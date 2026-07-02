@@ -136,5 +136,19 @@ async def check_content_safety(request: BookRequest) -> tuple[bool, str]:
             error=str(e),
             error_type=type(e).__name__,
         )
-        # Fail open — keyword check already passed
-        return True, ""
+        # FAIL CLOSED. This is a children's product: if we cannot positively
+        # verify a request is safe, we must block it, not wave it through on the
+        # keyword pre-filter alone. Alert so an outage/credit-exhaustion here is
+        # visible immediately rather than silently degrading safety.
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(
+                "Content safety Layer 2 (Anthropic) unavailable — failing closed",
+                level="error",
+            )
+        except Exception:
+            pass
+        return False, (
+            "We couldn't verify this is safe for kids right now. "
+            "Please try again in a moment."
+        )
