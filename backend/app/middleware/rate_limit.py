@@ -205,6 +205,74 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
     return permit
 
 
+async def reserve_daily_generation(uid: str) -> None:
+    """Atomically reserve one slot against the per-user/day generation ceiling.
+
+    Shared cost circuit-breaker for any paid fal.ai generation (book pages and
+    character sketches), independent of tier quota. Raises 429 when the ceiling
+    is reached. Pair every successful reservation-consuming path with a call to
+    release_daily_generation on failure so a failed generation doesn't burn the
+    day's ceiling.
+    """
+    db = firestore.client()
+    usage_ref = db.collection("usage").document(uid)
+
+    @firestore.transactional
+    def _reserve(transaction, usage_document):
+        snapshot = usage_document.get(transaction=transaction)
+        usage = snapshot.to_dict() if snapshot.exists else {}
+        now = datetime.now(timezone.utc)
+        day_key = now.strftime("%Y-%m-%d")
+        daily = usage.get("daily_count", 0) if usage.get("daily_date") == day_key else 0
+
+        if daily >= settings.daily_generation_ceiling:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": (
+                        "You've hit today's generation limit. "
+                        "Please try again tomorrow."
+                    ),
+                    "quota": {
+                        "used": daily,
+                        "limit": settings.daily_generation_ceiling,
+                        "remaining": 0,
+                    },
+                },
+            )
+
+        transaction.set(usage_document, {
+            "daily_date": day_key,
+            "daily_count": daily + 1,
+            "updated_at": now,
+        }, merge=True)
+
+    loop = asyncio.get_event_loop()
+    transaction = db.transaction()
+    await loop.run_in_executor(None, _reserve, transaction, usage_ref)
+
+
+async def release_daily_generation(uid: str) -> None:
+    """Return a daily-ceiling slot after a failed generation."""
+    db = firestore.client()
+    usage_ref = db.collection("usage").document(uid)
+
+    @firestore.transactional
+    def _rollback(transaction, usage_document):
+        snapshot = usage_document.get(transaction=transaction)
+        if not snapshot.exists:
+            return
+        usage = snapshot.to_dict()
+        transaction.set(usage_document, {
+            "daily_count": max(0, usage.get("daily_count", 0) - 1),
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+
+    loop = asyncio.get_event_loop()
+    transaction = db.transaction()
+    await loop.run_in_executor(None, _rollback, transaction, usage_ref)
+
+
 async def increment_usage(uid: str, permit: GenerationPermit | None = None) -> None:
     """
     Called ONLY after successful book generation.
