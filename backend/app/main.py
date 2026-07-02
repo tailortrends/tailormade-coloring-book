@@ -144,7 +144,11 @@ async def _check_firebase() -> str:
         )
         return "ok"
     except Exception as e:
-        return globals().get("firebase_init_error") or f"error: {str(e)[:100]}"
+        # Detail stays server-side; /health is unauthenticated so the public
+        # body must not leak exception text or the init error (cert length etc.).
+        logger.warning("health_firebase_error",
+                       error=globals().get("firebase_init_error") or str(e)[:200])
+        return "error"
 
 
 async def _check_r2() -> str:
@@ -157,7 +161,8 @@ async def _check_r2() -> str:
         )
         return "ok"
     except Exception as e:
-        return f"error: {str(e)[:100]}"
+        logger.warning("health_r2_error", error=str(e)[:200])
+        return "error"
 
 
 async def _check_fal() -> str:
