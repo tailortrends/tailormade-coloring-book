@@ -44,6 +44,19 @@ def _anthropic_returning(text: str):
     return MagicMock(return_value=fake_client)
 
 
+def test_keyword_boundary_no_false_positive():
+    """Benign words containing a blocked substring must NOT trip the keyword layer."""
+    ok, reason = content_filter._keyword_check("a charming and skillful classic scene")
+    assert ok is True, reason
+
+
+def test_keyword_boundary_still_blocks_whole_word():
+    """A blocked word as a whole word is still caught."""
+    ok, reason = content_filter._keyword_check("a scene with a gun")
+    assert ok is False
+    assert "gun" in reason
+
+
 def test_keyword_layer_blocks_before_anthropic():
     """A request tripping the keyword list is blocked without calling Anthropic."""
     req = BookRequest(title="Bomb Squad", theme="vehicles", age_range="6-9")

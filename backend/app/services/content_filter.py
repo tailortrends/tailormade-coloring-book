@@ -6,6 +6,7 @@ Runs sync Anthropic call in executor to avoid blocking the async event loop.
 """
 
 import asyncio
+import re
 import unicodedata
 from anthropic import Anthropic
 from tenacity import (
@@ -65,10 +66,16 @@ def _build_full_text(request: BookRequest) -> str:
 
 
 def _keyword_check(text: str) -> tuple[bool, str]:
-    """Layer 1: Fast keyword check. Returns (is_safe, reason)."""
+    """Layer 1: Fast keyword pre-filter. Returns (is_safe, reason).
+
+    Matches on word boundaries so benign words that merely *contain* a blocked
+    substring (e.g. "skillful" → "kill", "charming" → "harm") are not falsely
+    blocked. This is an additive pre-filter only; the semantic Layer 2 (which
+    fails closed) is the real safety gate.
+    """
     normalized = _normalize_text(text)
     for keyword in BLOCKED_KEYWORDS:
-        if keyword in normalized:
+        if re.search(rf"\b{re.escape(keyword)}\b", normalized):
             return False, f"Content contains blocked keyword: '{keyword}'"
     return True, ""
 
