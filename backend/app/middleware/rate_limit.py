@@ -119,6 +119,25 @@ async def check_rate_limit(uid: str, tier: str) -> GenerationPermit:
                 reservation_kind=kind,
             )
 
+        # Hard per-user/day ceiling — a cost circuit-breaker independent of tier
+        # quota, shared with character generation via usage.daily_count. Caps
+        # fal.ai spend even if tier logic would otherwise allow the request.
+        if daily_count >= settings.daily_generation_ceiling:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": (
+                        "You've hit today's generation limit. "
+                        "Please try again tomorrow."
+                    ),
+                    "quota": {
+                        "used": daily_count,
+                        "limit": settings.daily_generation_ceiling,
+                        "remaining": 0,
+                    },
+                },
+            )
+
         # 1. TEACHER
         if sub_tier == "teacher" and active:
             if monthly < settings.teacher_monthly_limit:
