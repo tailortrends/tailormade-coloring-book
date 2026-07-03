@@ -61,9 +61,10 @@ def test_validate_is_line_art_path_helper():
 def test_kontext_call_sends_negative_prompt(monkeypatch):
     captured = {}
 
-    def fake_run(endpoint, arguments):
+    def fake_run(endpoint, arguments, headers=None):
         captured["endpoint"] = endpoint
         captured["arguments"] = arguments
+        captured["headers"] = headers
         return {"images": [{"url": "https://fal.example/image.png"}]}
 
     monkeypatch.setattr(image_gen.fal_client, "run", fake_run)
@@ -82,3 +83,35 @@ def test_kontext_call_sends_negative_prompt(monkeypatch):
 
     assert url == "https://fal.example/image.png"
     assert captured["arguments"]["negative_prompt"] == image_gen.NEGATIVE_PROMPT
+
+
+def test_kontext_call_sends_short_lifecycle_header(monkeypatch):
+    """Every fal generation must ask fal to expire its own CDN copy quickly, so
+    generated children's content doesn't linger on a public third-party URL."""
+    captured = {}
+
+    def fake_run(endpoint, arguments, headers=None):
+        captured["headers"] = headers
+        return {"images": [{"url": "https://fal.example/image.png"}]}
+
+    monkeypatch.setattr(image_gen.fal_client, "run", fake_run)
+
+    scene = Scene(
+        page_number=1,
+        main_subject="rocket",
+        subject_hint="rocket",
+        theme="space",
+        complexity="simple",
+    )
+    prompt = image_gen._build_prompt(scene, age_range="4-6")
+    asyncio.get_event_loop().run_until_complete(
+        image_gen._call_kontext(prompt, page_number=1)
+    )
+
+    headers = captured["headers"] or {}
+    assert image_gen.FAL_OUTPUT_LIFECYCLE_HEADER in headers
+    # Value is a short, finite TTL (fal default without this is ~7 days).
+    import json as _json
+    pref = _json.loads(headers[image_gen.FAL_OUTPUT_LIFECYCLE_HEADER])
+    assert pref["expiration_duration_seconds"] <= 86400
+    assert pref["expiration_duration_seconds"] > 0

@@ -6,6 +6,7 @@ prompts and an optional character reference image — no LoRA required.
 """
 
 import asyncio
+import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,6 +34,17 @@ os.environ["FAL_KEY"] = settings.fal_key
 
 KONTEXT_MODEL = "fal-ai/flux-pro/kontext"
 KONTEXT_TEXT_MODEL = "fal-ai/flux-pro/kontext/text-to-image"
+
+# By default fal keeps its own copy of generated media on its public CDN
+# (unguessable URL) for ~7 days. We download every image into our own R2 storage
+# within the same request, so fal's copy is redundant almost immediately. Ask fal
+# to expire its copy quickly to minimize how long generated children's content
+# lives on a third-party public URL. The fal SDK forwards this per-request
+# `headers` dict onto the outgoing run request (see fal_client.SyncClient.run).
+FAL_OUTPUT_LIFECYCLE_HEADER = "X-Fal-Object-Lifecycle-Preference"
+FAL_REQUEST_HEADERS: dict[str, str] = {
+    FAL_OUTPUT_LIFECYCLE_HEADER: json.dumps({"expiration_duration_seconds": 3600}),
+}
 
 # ─── Prompt templates ────────────────────────────────────────────────────────
 
@@ -165,7 +177,7 @@ async def _call_kontext(
         result = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: fal_client.run(endpoint, arguments=arguments),
+                lambda: fal_client.run(endpoint, arguments=arguments, headers=FAL_REQUEST_HEADERS),
             ),
             timeout=120.0,
         )
@@ -482,6 +494,7 @@ async def generate_cover_bg_image(subject: str, theme: str) -> str:
                         "aspect_ratio": "1:1",
                         "output_format": "png",
                     },
+                    headers=FAL_REQUEST_HEADERS,
                 ),
             ),
             timeout=90.0,
@@ -538,6 +551,7 @@ async def generate_character_sketch(photo_url: str) -> str:
                         "num_images": 1,
                         "output_format": "png",
                     },
+                    headers=FAL_REQUEST_HEADERS,
                 ),
             ),
             timeout=120.0,
