@@ -1,32 +1,94 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
-import { signInWithPopup } from 'firebase/auth'
+import { signInWithPopup, getAdditionalUserInfo, signOut } from 'firebase/auth'
 import { auth, googleProvider } from '@/firebase'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/api/client'
+import ParentalConsentCheckbox from '@/components/ParentalConsentCheckbox.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const authError = ref<string | null>(null)
 
-// Reactively navigate when authentication state syncs
+// While a sign-in is in flight (popup open + new/returning decision) we hold the
+// auto-redirect so a brand-new user can be shown the consent gate first.
+const processingSignIn = ref(false)
+// A new (first-time) Google user must accept parental consent before entering
+// the app. While true, the consent gate is shown and the redirect stays blocked.
+const awaitingConsent = ref(false)
+const consentAccepted = ref(false)
+const consentError = ref<string | null>(null)
+const consentSubmitting = ref(false)
+
+function redirectTarget(): string {
+  return (route.query.redirect as string) || '/dashboard'
+}
+
+// Reactively navigate when authentication state syncs — but never while a
+// sign-in is being processed or while a new user still owes consent.
 watch(() => authStore.isAuthenticated, (isAuth) => {
-  if (isAuth) {
-    const redirect = (route.query.redirect as string) || '/dashboard'
-    router.push(redirect)
+  if (isAuth && !processingSignIn.value && !awaitingConsent.value) {
+    router.push(redirectTarget())
   }
 }, { immediate: true })
 
 async function signInWithGoogle() {
   authError.value = null
+  processingSignIn.value = true
   try {
-    await signInWithPopup(auth, googleProvider)
-    // The watcher above handles the actual redirection once authStore updates
+    const result = await signInWithPopup(auth, googleProvider)
+    const isNewUser = getAdditionalUserInfo(result)?.isNewUser === true
+    if (isNewUser) {
+      // First-time account created via Google on the login page: gate on consent
+      // before routing into the app. Keep the redirect blocked; show the gate.
+      awaitingConsent.value = true
+      processingSignIn.value = false
+      return
+    }
+    // Returning user — proceed exactly as before, no re-prompt.
+    processingSignIn.value = false
+    router.push(redirectTarget())
   } catch (err: unknown) {
+    // Popup closed/cancelled → not signed in, nothing to clean up.
+    processingSignIn.value = false
     const message = err instanceof Error ? err.message : 'Sign-in failed'
     authError.value = message
   }
+}
+
+async function acceptConsentAndContinue() {
+  if (!consentAccepted.value) {
+    consentError.value =
+      'Please confirm you are a parent or guardian (18+) and agree to the Terms and Privacy Policy to continue.'
+    return
+  }
+  consentError.value = null
+  consentSubmitting.value = true
+  try {
+    await api.post('/api/v1/auth/consent')
+    awaitingConsent.value = false
+    router.push(redirectTarget())
+  } catch {
+    consentError.value = 'Could not record your consent. Please try again.'
+  } finally {
+    consentSubmitting.value = false
+  }
+}
+
+async function cancelConsent() {
+  // The user backed out of consent. They must NOT remain signed in without it,
+  // so sign them out and return them to a clean login screen.
+  awaitingConsent.value = false
+  consentAccepted.value = false
+  consentError.value = null
+  try {
+    await signOut(auth)
+  } catch {
+    /* token may already be gone — ignore */
+  }
+  authStore.clearUser()
 }
 
 function handleEmailLogin() {
@@ -36,6 +98,41 @@ function handleEmailLogin() {
 
 <template>
   <div class="bg-background-light dark:bg-background-dark font-display min-h-screen flex flex-col overflow-x-hidden">
+    <!-- Parental-consent gate for first-time Google users. Blocks entry into the
+         app until consent is recorded; backing out signs the user out. -->
+    <div
+      v-if="awaitingConsent"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl border border-slate-100 dark:border-slate-700 p-6 md:p-8">
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-2">One last step</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+          Before we set up your account, please confirm the following.
+        </p>
+
+        <ParentalConsentCheckbox v-model="consentAccepted" :error="consentError" />
+
+        <div class="mt-6 flex items-center gap-3">
+          <button
+            @click="acceptConsentAndContinue"
+            :disabled="!consentAccepted || consentSubmitting"
+            class="flex-1 rounded-full bg-primary py-3 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {{ consentSubmitting ? 'Please wait…' : 'Agree and continue' }}
+          </button>
+          <button
+            @click="cancelConsent"
+            :disabled="consentSubmitting"
+            class="rounded-full border border-slate-200 dark:border-slate-600 px-5 py-3 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
     <header class="flex items-center justify-between whitespace-nowrap bg-white dark:bg-background-dark border-b border-slate-100 dark:border-slate-800 px-6 py-4 md:px-10 lg:px-20 relative z-20">
       <RouterLink to="/" class="flex items-center gap-2">
