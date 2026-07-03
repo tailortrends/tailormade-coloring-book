@@ -91,6 +91,16 @@ function handleCancel() {
 
         <!-- Body -->
         <div class="p-8 space-y-8">
+          <!-- COPPA notice -->
+          <div class="flex items-start gap-3 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/20 p-4">
+            <span class="material-symbols-outlined text-blue-500 dark:text-blue-400 text-[20px]">info</span>
+            <p class="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+              We use your child's first name and age range only to personalize their coloring books.
+              You can review or delete this at any time. See our
+              <RouterLink to="/privacy" class="font-semibold underline hover:no-underline">Privacy Policy</RouterLink>.
+            </p>
+          </div>
+
           <!-- Name -->
           <label class="flex flex-col gap-2">
             <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Child's Name</span>

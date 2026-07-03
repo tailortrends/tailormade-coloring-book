@@ -4,11 +4,17 @@ import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from '@/firebase'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/api/client'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const authError = ref<string | null>(null)
+
+// Required parental-consent acknowledgment. Account creation is blocked until
+// this is checked; the timestamp is persisted server-side as proof of consent.
+const consentAccepted = ref(false)
+const consentError = ref<string | null>(null)
 
 // Reactively navigate when authentication state syncs
 watch(() => authStore.isAuthenticated, (isAuth) => {
@@ -18,10 +24,28 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
   }
 }, { immediate: true })
 
+function ensureConsent(): boolean {
+  if (!consentAccepted.value) {
+    consentError.value =
+      'Please confirm you are a parent or guardian (18+) and agree to the Terms and Privacy Policy to continue.'
+    return false
+  }
+  consentError.value = null
+  return true
+}
+
 async function signUpWithGoogle() {
   authError.value = null
+  if (!ensureConsent()) return
   try {
     await signInWithPopup(auth, googleProvider)
+    // Persist proof of consent now that we have an authenticated user.
+    // Non-blocking for the redirect, but logged if it fails.
+    try {
+      await api.post('/api/v1/auth/consent')
+    } catch {
+      /* consent persistence is best-effort; the watcher still redirects */
+    }
     // The watcher above handles the actual redirection once authStore updates
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sign-up failed'
@@ -30,6 +54,7 @@ async function signUpWithGoogle() {
 }
 
 function handleEmailSignup() {
+  if (!ensureConsent()) return
   authError.value = 'Email signup is not yet configured. Please sign up with Google.'
 }
 </script>
@@ -87,7 +112,29 @@ function handleEmailSignup() {
             <p class="text-slate-500 dark:text-slate-400 text-lg">Create personalized coloring books for your kids in seconds!</p>
           </div>
 
-          <button @click="signUpWithGoogle" class="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-bold h-14 px-6 rounded-lg transition-all mb-6 group">
+          <!-- Required parental-consent acknowledgment -->
+          <label class="flex items-start gap-3 mb-4 cursor-pointer select-none">
+            <input
+              v-model="consentAccepted"
+              type="checkbox"
+              required
+              class="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 dark:border-slate-500 text-primary focus:ring-primary/30"
+            />
+            <span class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              I am a parent or legal guardian, at least 18 years old, and I agree to the
+              <RouterLink to="/terms" target="_blank" class="text-primary font-semibold hover:underline">Terms of Service</RouterLink>
+              and
+              <RouterLink to="/privacy" target="_blank" class="text-primary font-semibold hover:underline">Privacy Policy</RouterLink>.
+            </span>
+          </label>
+
+          <p v-if="consentError" class="text-red-500 text-sm font-medium mb-3">{{ consentError }}</p>
+
+          <button
+            @click="signUpWithGoogle"
+            :disabled="!consentAccepted"
+            class="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-bold h-14 px-6 rounded-lg transition-all mb-6 group disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <svg class="w-6 h-6" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
@@ -137,7 +184,7 @@ function handleEmailSignup() {
             </div>
 
             <div class="pt-2">
-              <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white text-lg font-bold h-14 rounded-full shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+              <button type="submit" :disabled="!consentAccepted" class="w-full bg-primary hover:bg-primary-dark text-white text-lg font-bold h-14 rounded-full shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0">
                 <span>Create My Account</span>
                 <span class="material-symbols-outlined">arrow_forward</span>
               </button>

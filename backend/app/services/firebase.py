@@ -325,6 +325,30 @@ async def update_user_stripe(
         logger.info("user_stripe_updated", uid=uid, fields=list(update.keys()))
 
 
+async def record_parental_consent(uid: str) -> None:
+    """Persist a timestamped record that the account holder accepted the Terms
+    and Privacy Policy and attested to being a parent/guardian 18+.
+
+    Written server-side via the Admin SDK so it is authoritative proof of
+    consent. `consent_accepted_at` is not a protected billing/quota field, so
+    this is purely an additive write and touches no auth or payment logic.
+    """
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    now = datetime.now(timezone.utc)
+    await loop.run_in_executor(
+        None,
+        lambda: db.collection("users").document(uid).set(
+            {
+                "consent_accepted_at": now,
+                "consent_terms_version": "2026-07-03",
+            },
+            merge=True,
+        ),
+    )
+    logger.info("parental_consent_recorded", uid=uid)
+
+
 async def get_user_stripe_info(uid: str) -> dict | None:
     """Return Stripe-related fields from a user doc."""
     db = firestore.client()

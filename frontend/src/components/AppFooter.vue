@@ -43,9 +43,8 @@
         <div>
           <h4 class="font-bold text-slate-900 dark:text-white mb-6">Legal</h4>
           <ul class="space-y-3 text-sm text-slate-500">
-            <li><a href="#" class="hover:text-primary transition-colors">Privacy Policy</a></li>
-            <li><a href="#" class="hover:text-primary transition-colors">Terms of Service</a></li>
-            <li><a href="#" class="hover:text-primary transition-colors">Cookie Policy</a></li>
+            <li><RouterLink to="/privacy" class="hover:text-primary transition-colors">Privacy Policy</RouterLink></li>
+            <li><RouterLink to="/terms" class="hover:text-primary transition-colors">Terms of Service</RouterLink></li>
           </ul>
         </div>
       </div>

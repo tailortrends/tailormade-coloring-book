@@ -1,8 +1,17 @@
 from fastapi import APIRouter, Depends
 from app.middleware.auth import get_current_user
-from app.services.firebase import get_user_stripe_info
+from app.services.firebase import get_user_stripe_info, record_parental_consent
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+@router.post("/consent", status_code=200)
+async def accept_consent(user: dict = Depends(get_current_user)):
+    """Record that the authenticated account holder accepted the Terms and
+    Privacy Policy and attested to being a parent/guardian 18+ at signup.
+    Persists a timestamp as proof of consent."""
+    await record_parental_consent(user["uid"])
+    return {"status": "recorded"}
 
 
 @router.get("/me")
