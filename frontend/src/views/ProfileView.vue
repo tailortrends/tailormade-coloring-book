@@ -3,9 +3,10 @@ import { ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useBookQuota } from '@/composables/useBookQuota'
-import { signOut, deleteUser } from 'firebase/auth'
+import { signOut } from 'firebase/auth'
 import { auth } from '@/firebase'
 import { useRouter } from 'vue-router'
+import { api } from '@/api/client'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -35,18 +36,22 @@ async function handleDeleteAccount() {
   actionError.value = ''
   deleteLoading.value = true
   try {
-    const user = auth.currentUser
-    if (!user) {
-      throw new Error('No signed-in user')
+    // Server-side cascade: deletes every book, child profile, character, and
+    // their R2 files, then the user document, and only then the Auth record.
+    // (The old client-side deleteUser() removed only the login and orphaned
+    // everything else.)
+    await api.delete('/api/v1/account')
+    // The Auth record is already gone server-side; clear the local session too.
+    try {
+      await signOut(auth)
+    } catch {
+      /* token already invalid after deletion — ignore */
     }
-    await deleteUser(user)
     authStore.clearUser()
     router.push('/')
-  } catch (err) {
-    const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : ''
-    actionError.value = code === 'auth/requires-recent-login'
-      ? 'Please sign in again before deleting your account.'
-      : 'Could not delete your account. Please try again.'
+  } catch {
+    actionError.value =
+      'Could not delete your account. Nothing was changed — please try again, or contact support if this keeps happening.'
   } finally {
     deleteLoading.value = false
   }
@@ -157,21 +162,31 @@ function copyReferralLink() {
           >
             Delete Account
           </button>
-          <div v-else class="flex items-center gap-2">
-            <span class="text-sm text-red-600 dark:text-red-400 font-medium">Are you sure?</span>
-            <button
-              @click="handleDeleteAccount"
-              :disabled="deleteLoading"
-              class="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {{ deleteLoading ? 'Deleting...' : 'Yes, delete' }}
-            </button>
-            <button
-              @click="showDeleteConfirm = false"
-              class="px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              Cancel
-            </button>
+          <div v-else class="w-full space-y-3">
+            <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-900/20">
+              <p class="text-sm font-bold text-red-700 dark:text-red-300">This is permanent and cannot be undone.</p>
+              <p class="mt-1 text-sm text-red-600 dark:text-red-400">
+                Deleting your account permanently removes all of your child profiles, saved books,
+                book inputs, and generated coloring pages and PDFs. There is no way to recover them,
+                and you will not be able to sign back in.
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                @click="handleDeleteAccount"
+                :disabled="deleteLoading"
+                class="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {{ deleteLoading ? 'Deleting...' : 'Yes, permanently delete everything' }}
+              </button>
+              <button
+                @click="showDeleteConfirm = false"
+                :disabled="deleteLoading"
+                class="px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       </section>

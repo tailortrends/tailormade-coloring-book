@@ -136,7 +136,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-from app.routers import auth, books, admin, library, characters, profiles, stripe_router  # noqa: E402
+from app.routers import auth, books, admin, library, characters, profiles, stripe_router, account  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(books.router)
@@ -145,6 +145,7 @@ app.include_router(library.router)
 app.include_router(characters.router)
 app.include_router(profiles.router)
 app.include_router(stripe_router.router)
+app.include_router(account.router)
 
 
 async def _check_firebase() -> str:

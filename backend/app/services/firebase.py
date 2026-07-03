@@ -346,6 +346,33 @@ async def get_user_stripe_info(uid: str) -> dict | None:
     }
 
 
+async def delete_user_document(uid: str) -> None:
+    """Delete the users/{uid} Firestore document via the Admin SDK.
+
+    The Admin SDK bypasses security rules, so firestore.rules can stay
+    `allow delete: if false` for direct client access while account deletion
+    still works server-side.
+    """
+    db = firestore.client()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None, lambda: db.collection("users").document(uid).delete()
+    )
+    logger.info("user_document_deleted", uid=uid)
+
+
+async def delete_auth_user(uid: str) -> None:
+    """Delete the Firebase Auth user record via the Admin SDK.
+
+    Called ONLY after all of the user's data has been removed, so a deletion
+    that fails partway never locks the user out with orphaned data behind them.
+    """
+    from firebase_admin import auth as firebase_auth
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: firebase_auth.delete_user(uid))
+    logger.info("auth_user_deleted", uid=uid)
+
+
 async def get_books_by_cost(limit: int = 50) -> list[dict]:
     """Return most expensive books by total_cost descending."""
     db = firestore.client()
