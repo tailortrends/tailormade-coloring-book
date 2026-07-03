@@ -48,6 +48,10 @@ async def lifespan(app: FastAPI):
                 dsn=settings.sentry_dsn,
                 traces_sample_rate=0.2,
                 environment=settings.app_env,
+                # Children's product: never auto-forward PII (headers/IP/cookies/
+                # body/user data) to a third party. Kept explicit so a later edit
+                # can't silently flip the default.
+                send_default_pii=False,
             )
             logger.info("sentry_initialized")
         except Exception as e:
@@ -117,6 +121,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
     logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+    # This handler returns a response, which marks the exception "handled" and
+    # otherwise hides it from Sentry's Starlette integration. Capture explicitly
+    # so unhandled 500s still reach Sentry.
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+    except Exception:
+        pass
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
