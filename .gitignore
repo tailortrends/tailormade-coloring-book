@@ -16,6 +16,11 @@ dist/
 dist-ssr/
 *.local
 
+# Generated from legal/*.md by frontend/scripts/sync-legal-docs.mjs — never edit
+# these directly; edit the canonical copies under legal/ instead.
+frontend/src/content/privacy-policy.md
+frontend/src/content/terms-of-service.md
+
 # Secrets
 *.env
 .env
