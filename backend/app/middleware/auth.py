@@ -17,15 +17,31 @@ async def get_current_user(
     token = credentials.credentials
 
     # ── DEV BYPASS ───────────────────────────────────────────────────────────
-    # Allows testing without a real Firebase token in development.
-    # NEVER remove this env check — it must always be gated on APP_ENV.
-    if settings.app_env == "development" and token == "dev-test-token":
-        logger.warning("auth_bypass_used", uid="test-user-123")
-        return {
-            "uid": "test-user-123",
-            "email": "test@tailormade.dev",
-            "tier": "free",
-        }
+    # Allows testing without a real Firebase token in local/dev contexts.
+    # Structurally inert outside an explicit debug context: it requires BOTH
+    # settings.debug AND a non-production APP_ENV. A single env var can no longer
+    # flip production into an open door — both gates must be wrong at once.
+    if token == "dev-test-token":
+        if settings.is_production:
+            # This path must never be honored in production. If we reach it,
+            # something is badly misconfigured — alert loudly and fall through
+            # to real token verification (which will reject this token).
+            logger.error("auth_bypass_attempted_in_production", uid="test-user-123")
+            try:
+                import sentry_sdk
+                sentry_sdk.capture_message(
+                    "dev-test-token auth bypass attempted while APP_ENV=production",
+                    level="error",
+                )
+            except Exception:
+                pass
+        elif settings.debug and settings.app_env != "production":
+            logger.warning("auth_bypass_used", uid="test-user-123")
+            return {
+                "uid": "test-user-123",
+                "email": "test@tailormade.dev",
+                "tier": "free",
+            }
     # ─────────────────────────────────────────────────────────────────────────
 
     try:

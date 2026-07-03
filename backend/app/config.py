@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Generation limits
     max_pages: int = 15
     max_concurrent_fal_calls: int = 5
+    # Hard per-user/day ceiling on paid generations (books + character sketches),
+    # independent of tier quota. A cost circuit-breaker against a single account
+    # running up unbounded fal.ai spend.
+    daily_generation_ceiling: int = 50
 
     @property
     def admin_uid_list(self) -> list[str]:

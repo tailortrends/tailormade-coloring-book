@@ -4,10 +4,17 @@ import uuid
 import httpx
 import structlog
 from app.middleware.auth import get_current_user
+from app.middleware.rate_limit import (
+    reserve_daily_generation,
+    release_daily_generation,
+)
 from app.services import image_gen, storage, firebase
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1/characters", tags=["characters"])
+
+# Per-user cap on stored characters, mirroring the child-profile cap.
+MAX_CHARACTERS_PER_USER = 5
 
 VALID_RELATIONSHIPS = [
     "mother", "father", "son", "daughter",
@@ -36,12 +43,46 @@ async def create_character(
     character_id = str(uuid.uuid4())
     logger.info("character_creation_started", uid=uid, character_id=character_id, name=name, relationship=relationship)
 
+    # Per-user cap on stored characters (mirrors the child-profile cap).
+    existing = await firebase.get_user_characters(uid)
+    if len(existing) >= MAX_CHARACTERS_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CHARACTERS_PER_USER} characters allowed per account.",
+        )
+
     try:
         input_bytes = await image.read()
     except Exception as e:
         logger.error("character_image_read_failed", error=str(e))
         raise HTTPException(status_code=400, detail="Failed to read the uploaded image")
 
+    # Reserve a daily-generation slot BEFORE the paid Kontext sketch call. This
+    # is the same hard per-user/day ceiling that book generation consumes — it
+    # caps fal.ai spend even for an authenticated user hammering this endpoint.
+    # Released on any failure so a failed sketch doesn't burn the day's ceiling.
+    await reserve_daily_generation(uid)
+    reservation_active = True
+    try:
+        return await _create_character_after_reservation(
+            uid, character_id, name, relationship, character_type,
+            image, input_bytes,
+        )
+    except Exception:
+        if reservation_active:
+            await release_daily_generation(uid)
+        raise
+
+
+async def _create_character_after_reservation(
+    uid: str,
+    character_id: str,
+    name: str,
+    relationship: str,
+    character_type: str,
+    image: UploadFile,
+    input_bytes: bytes,
+):
     # Upload the original photo to R2 first — Kontext needs a reachable URL.
     try:
         original_ext = image.filename.split(".")[-1] if "." in image.filename else "png"

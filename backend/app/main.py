@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +48,10 @@ async def lifespan(app: FastAPI):
                 dsn=settings.sentry_dsn,
                 traces_sample_rate=0.2,
                 environment=settings.app_env,
+                # Children's product: never auto-forward PII (headers/IP/cookies/
+                # body/user data) to a third party. Kept explicit so a later edit
+                # can't silently flip the default.
+                send_default_pii=False,
             )
             logger.info("sentry_initialized")
         except Exception as e:
@@ -116,6 +121,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
     logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+    # This handler returns a response, which marks the exception "handled" and
+    # otherwise hides it from Sentry's Starlette integration. Capture explicitly
+    # so unhandled 500s still reach Sentry.
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+    except Exception:
+        pass
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
@@ -134,34 +147,104 @@ app.include_router(profiles.router)
 app.include_router(stripe_router.router)
 
 
-@app.get("/health")
-async def health():
-    """Liveness probe — always returns 200 if the server is running.
-    Dependency status is reported in the response body for observability."""
-    import json
-
-    checks = {}
-
+async def _check_firebase() -> str:
     try:
         from firebase_admin import firestore
         db = firestore.client()
-        db.collection("_health").limit(1).get()
-        checks["firebase"] = "ok"
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: db.collection("_health").limit(1).get()
+        )
+        return "ok"
     except Exception as e:
-        checks["firebase"] = globals().get("firebase_init_error") or f"error: {str(e)[:100]}"
+        # Detail stays server-side; /health is unauthenticated so the public
+        # body must not leak exception text or the init error (cert length etc.).
+        logger.warning("health_firebase_error",
+                       error=globals().get("firebase_init_error") or str(e)[:200])
+        return "error"
 
-    checks["version"] = 3
 
+async def _check_r2() -> str:
     try:
         from app.services.storage import _get_r2_client
         from app.config import get_settings
         s = get_settings()
-        _get_r2_client().head_bucket(Bucket=s.r2_bucket_name)
-        checks["r2"] = "ok"
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: _get_r2_client().head_bucket(Bucket=s.r2_bucket_name)
+        )
+        return "ok"
     except Exception as e:
-        checks["r2"] = f"error: {str(e)[:100]}"
+        logger.warning("health_r2_error", error=str(e)[:200])
+        return "error"
 
-    status = "ok" if checks.get("firebase") == "ok" and checks.get("r2") == "ok" else "degraded"
-    # Always return 200 so Railway healthcheck passes.
-    # Monitoring tools can check the "status" field for degradation.
+
+async def _check_fal() -> str:
+    """Validate the fal model URL actually resolves — a dead model URL has
+    silently broken this app before. Cheap HEAD, never a generation."""
+    import httpx
+    from app.config import get_settings
+    from app.services.image_gen import KONTEXT_MODEL
+
+    s = get_settings()
+    url = f"https://fal.run/{KONTEXT_MODEL}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.head(
+                url, headers={"Authorization": f"Key {s.fal_key}"}
+            )
+        # 404 = the model endpoint no longer exists. Any other status (401/405/
+        # 422/2xx) means the URL resolves — we deliberately do not authenticate a
+        # real job here.
+        if resp.status_code == 404:
+            return "error: model url not found"
+        return "ok"
+    except Exception:
+        return "unreachable"
+
+
+async def _check_anthropic() -> str:
+    """Reachability + credential check via the free, non-generating models list."""
+    import httpx
+    from app.config import get_settings
+
+    s = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": s.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+            )
+        if resp.status_code == 200:
+            return "ok"
+        if resp.status_code in (401, 403):
+            return "error: auth"
+        return "error"
+    except Exception:
+        return "unreachable"
+
+
+@app.get("/health")
+async def health():
+    """Liveness probe — always returns 200 if the server is running.
+    Validates real dependencies (Firebase, R2, fal model URL, Anthropic) and
+    reports each in the body so a silently-dead dependency is visible without
+    waiting for a user-facing failure. Checks run concurrently to bound latency."""
+    firebase_status, r2_status, fal_status, anthropic_status = await asyncio.gather(
+        _check_firebase(), _check_r2(), _check_fal(), _check_anthropic()
+    )
+
+    checks = {
+        "firebase": firebase_status,
+        "r2": r2_status,
+        "fal": fal_status,
+        "anthropic": anthropic_status,
+        "version": 4,
+    }
+
+    status = "ok" if all(
+        checks[dep] == "ok" for dep in ("firebase", "r2", "fal", "anthropic")
+    ) else "degraded"
+    # Always return 200 so Railway liveness passes; monitoring reads "status".
     return {"status": status, "checks": checks}

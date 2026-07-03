@@ -170,7 +170,7 @@ async def _call_kontext(
             timeout=120.0,
         )
         image_url = result["images"][0]["url"]
-        logger.info("kontext_call_success", page=page_number, url=image_url)
+        logger.info("kontext_call_success", page=page_number)
         return image_url, result
     except asyncio.TimeoutError:
         logger.error("kontext_call_timeout", page=page_number)
@@ -277,8 +277,7 @@ async def _generate_one(
                     img_bytes = resp.content
                 logger.info("library_image_used",
                             page=scene.page_number,
-                            subject=scene.subject_hint,
-                            url=library_url)
+                            subject=scene.subject_hint)
                 return ImageResult(
                     page_number=scene.page_number,
                     image_url=library_url,
@@ -290,7 +289,6 @@ async def _generate_one(
             except Exception as e:
                 logger.warning("library_image_download_failed",
                                page=scene.page_number,
-                               url=library_url,
                                error=str(e))
 
     async with semaphore:
@@ -524,7 +522,7 @@ async def generate_character_sketch(photo_url: str) -> str:
         "no shading, no gray, no color. Friendly children's coloring book "
         "style. Preserve the character's key features and likeness."
     )
-    logger.info("character_sketch_start", photo_url=photo_url)
+    logger.info("character_sketch_start", has_photo=bool(photo_url))
     try:
         result = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
@@ -545,7 +543,7 @@ async def generate_character_sketch(photo_url: str) -> str:
             timeout=120.0,
         )
         image_url = result["images"][0]["url"]
-        logger.info("character_sketch_success", url=image_url)
+        logger.info("character_sketch_success")
         return image_url
     except Exception as e:
         logger.error("character_sketch_failed", error=str(e))

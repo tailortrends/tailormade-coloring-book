@@ -68,10 +68,16 @@ def _book_response_from_data(data: dict) -> BookResponse:
         storage.generate_presigned_url(pdf_key, expiry_seconds=storage.PDF_URL_EXPIRY_SECONDS)
         if pdf_key else None
     )
-    page_urls = [
-        storage.generate_presigned_url(key, expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS)
-        for key in page_keys
-    ]
+    # Free-tier books are watermarked in the PDF. Do NOT hand back clean,
+    # unwatermarked interior page images — that would let a free user strip the
+    # watermark by pulling the raw PNGs. Only the watermarked PDF is exposed.
+    if data.get("watermarked"):
+        page_urls = []
+    else:
+        page_urls = [
+            storage.generate_presigned_url(key, expiry_seconds=storage.IMAGE_URL_EXPIRY_SECONDS)
+            for key in page_keys
+        ]
     return BookResponse(
         book_id=data["book_id"],
         title=data["title"],
@@ -414,6 +420,7 @@ async def _generate_book_after_reservation(
         "page_keys": page_keys,
         "pdf_key": pdf_key,
         "status": "complete",
+        "watermarked": permit.tier == "free",
         "created_at": datetime.now(timezone.utc),
     }
     await firebase.save_book(book_id, book_data)
@@ -473,12 +480,15 @@ async def _generate_book_after_reservation(
         total_cost=round(total_cost, 6),
     )
 
+    # Free-tier books only expose the watermarked PDF, never the clean page PNGs.
+    response_page_urls = [] if permit.tier == "free" else page_signed_urls
+
     return BookResponse(
         book_id=book_id,
         title=request.title,
         status="complete",
         pdf_url=pdf_url,
-        page_urls=page_signed_urls,
+        page_urls=response_page_urls,
         page_count=len(page_keys),
         created_at=datetime.now(timezone.utc),
         theme=request.theme,
