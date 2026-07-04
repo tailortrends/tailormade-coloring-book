@@ -1,19 +1,33 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppFooter from '@/components/AppFooter.vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { createCheckoutSession } from '@/api/stripe'
+import { createCheckoutSession, getStripeConfig } from '@/api/stripe'
 import { getApiErrorDetail } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const loadingPlan = ref<string | null>(null)
 const error = ref('')
 
-const FAMILY_PRICE_ID = (import.meta.env.VITE_STRIPE_FAMILY_PRICE_ID as string) || ''
-const TEACHER_PRICE_ID = (import.meta.env.VITE_STRIPE_TEACHER_PRICE_ID as string) || ''
-const SINGLE_PRICE_ID = (import.meta.env.VITE_STRIPE_SINGLE_PRICE_ID as string) || ''
+// Price IDs come from the backend's active Stripe mode (GET /stripe/config), not
+// build-time env vars — the active mode is resolved at runtime and can be
+// toggled in Firestore, so a hardcoded VITE_STRIPE_* would drift and 400.
+const FAMILY_PRICE_ID = ref('')
+const TEACHER_PRICE_ID = ref('')
+const SINGLE_PRICE_ID = ref('')
+
+onMounted(async () => {
+  try {
+    const cfg = await getStripeConfig()
+    FAMILY_PRICE_ID.value = cfg.price_ids.family
+    TEACHER_PRICE_ID.value = cfg.price_ids.teacher
+    SINGLE_PRICE_ID.value = cfg.price_ids.single
+  } catch {
+    error.value = 'Could not load pricing right now. Please refresh and try again.'
+  }
+})
 
 const currentTier = computed(() => authStore.tier)
 const isLoggedIn = computed(() => authStore.isAuthenticated)
@@ -22,6 +36,10 @@ const isActive = computed(() => authStore.subscriptionActive)
 async function subscribe(plan: string, priceId: string) {
   if (!isLoggedIn.value) {
     window.location.href = '/signup'
+    return
+  }
+  if (!priceId) {
+    error.value = 'Pricing is still loading. Please try again in a moment.'
     return
   }
   error.value = ''
