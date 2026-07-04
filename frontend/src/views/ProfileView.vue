@@ -10,7 +10,7 @@ import { api } from '@/api/client'
 
 const authStore = useAuthStore()
 const router = useRouter()
-const { booksUsed, booksLimit, booksRemaining, percentUsed } = useBookQuota()
+const { booksUsed, booksLimit, booksRemaining, percentUsed, isLoading: quotaLoading, isError: quotaError, isReady: quotaReady, refresh: refreshQuota } = useBookQuota()
 
 const showDeleteConfirm = ref(false)
 const deleteLoading = ref(false)
@@ -97,19 +97,23 @@ function copyReferralLink() {
         <div class="flex items-center justify-between mb-4">
           <div>
             <p class="text-sm font-semibold text-slate-700 dark:text-slate-200 capitalize">{{ authStore.tier }} Plan</p>
-            <p class="text-xs text-slate-500 dark:text-slate-400">{{ booksUsed }}/{{ booksLimit }} books used this period</p>
+            <p v-if="quotaLoading" class="text-xs text-slate-400">Loading usage…</p>
+            <button v-else-if="quotaError" @click="refreshQuota()" class="text-xs text-slate-500 underline">Unable to load usage · Retry</button>
+            <p v-else-if="quotaReady" class="text-xs text-slate-500 dark:text-slate-400">{{ booksUsed }}/{{ booksLimit }} books used this period</p>
           </div>
           <RouterLink to="/upgrade" class="px-4 py-2 rounded-full bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors">
             Upgrade
           </RouterLink>
         </div>
-        <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
-          <div
-            class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500"
-            :style="{ width: percentUsed + '%' }"
-          ></div>
-        </div>
-        <p class="text-xs text-slate-400 mt-2">{{ booksRemaining }} book{{ booksRemaining === 1 ? '' : 's' }} remaining</p>
+        <template v-if="quotaReady">
+          <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500"
+              :style="{ width: percentUsed + '%' }"
+            ></div>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">{{ booksRemaining }} book{{ booksRemaining === 1 ? '' : 's' }} remaining</p>
+        </template>
       </section>
 
       <!-- Section 3: Referral -->

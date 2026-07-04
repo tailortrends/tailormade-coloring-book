@@ -22,6 +22,9 @@ const {
   booksLimit,
   percentUsed,
   loading: quotaLoading,
+  isError: quotaError,
+  isReady: quotaReady,
+  refresh: refreshQuota,
 } = useBookQuota()
 
 // Subscription tiers reset on the 1st of the next month; free/single tiers don't.
@@ -148,11 +151,13 @@ async function handleGenerate() {
               </div>
               <p class="text-primary font-black text-lg">
                 <span v-if="quotaLoading" class="text-slate-400 text-sm font-medium">Loading…</span>
-                <template v-else>{{ booksUsed }}<span class="text-slate-400 text-sm font-medium">/{{ booksLimit }}</span></template>
+                <button v-else-if="quotaError" @click="refreshQuota()" class="text-slate-500 text-sm font-semibold underline">Unable to load · Retry</button>
+                <template v-else-if="quotaReady">{{ booksUsed }}<span class="text-slate-400 text-sm font-medium">/{{ booksLimit }}</span></template>
               </p>
             </div>
 
-            <div class="relative z-10">
+            <!-- Progress bar only when usage is genuinely known -->
+            <div v-if="quotaReady" class="relative z-10">
               <div class="flex justify-between text-xs mb-1.5 font-semibold">
                 <span class="text-slate-700 dark:text-slate-300">{{ percentUsed }}% Used</span>
                 <span class="text-slate-400">{{ resetLabel }}</span>
@@ -161,6 +166,7 @@ async function handleGenerate() {
                 <div class="h-full rounded-full bg-gradient-to-r from-primary to-accent-purple transition-all duration-500 shadow-[0_0_10px_rgba(139,92,246,0.5)]" :style="{ width: `${percentUsed}%` }"></div>
               </div>
             </div>
+            <p v-else-if="quotaError" class="relative z-10 text-xs text-slate-400">Usage couldn't be loaded right now.</p>
 
             <div class="mt-4 flex justify-end relative z-10">
               <RouterLink to="/pricing" class="text-primary text-xs font-bold hover:text-primary-dark transition-colors flex items-center gap-1 group/link">

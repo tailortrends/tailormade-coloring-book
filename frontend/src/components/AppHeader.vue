@@ -10,7 +10,7 @@ import { useBookQuota } from '@/composables/useBookQuota'
 const router = useRouter()
 const authStore = useAuthStore()
 const profilesStore = useProfilesStore()
-const { booksRemaining, isAtLimit } = useBookQuota()
+const { booksRemaining, isAtLimit, isLoading, isError, isReady, refresh } = useBookQuota()
 const signOutLoading = ref(false)
 const signOutError = ref('')
 
@@ -44,13 +44,28 @@ async function handleSignOut() {
 
       <!-- Authenticated: show quota pill + user info + sign out -->
       <div v-if="authStore.isAuthenticated" class="flex items-center gap-4">
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border cursor-pointer transition-colors select-none"
+        <!-- Error: usage read failed — show a distinct state, never a fake number -->
+        <button v-if="isError"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border select-none bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700"
+          @click="refresh()"
+          title="Retry"
+        >
+          ⚠️ <span class="hidden sm:inline">Usage unavailable · Retry</span>
+        </button>
+        <!-- Loading -->
+        <div v-else-if="isLoading || !isReady"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border select-none bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700"
+        >
+          📚 <span class="hidden sm:inline">…</span>
+        </div>
+        <!-- Ready -->
+        <div v-else class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border cursor-pointer transition-colors select-none"
           :class="isAtLimit ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30' : 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-900/30'"
           @click="router.push('/pricing')"
         >
-          📚 
+          📚
           <span v-if="!isAtLimit" class="hidden sm:inline">
-            {{ booksRemaining }} 
+            {{ booksRemaining }}
             {{ booksRemaining === 1 ? 'book' : 'books' }} left
           </span>
           <span v-else class="hidden sm:inline">Upgrade to create more</span>

@@ -78,7 +78,9 @@ function formatBookDate(value: unknown): string {
             Hello, {{ firstName }}! 👋
           </h1>
           <p class="text-slate-600 dark:text-slate-400 text-lg sm:text-xl font-medium">
-            {{ dashboard.tierLabel }} Plan · {{ dashboard.booksRemaining }} {{ dashboard.booksRemaining === 1 ? 'book' : 'books' }} remaining
+            <span v-if="dashboard.loading">Loading your plan…</span>
+            <span v-else-if="dashboard.error">Usage unavailable right now</span>
+            <span v-else>{{ dashboard.tierLabel }} Plan · {{ dashboard.booksRemaining }} {{ dashboard.booksRemaining === 1 ? 'book' : 'books' }} remaining</span>
           </p>
         </header>
 
@@ -239,7 +241,7 @@ function formatBookDate(value: unknown): string {
               </div>
               <div class="text-right">
                 <p class="text-sky-100 text-sm uppercase tracking-wider font-semibold mb-1">Remaining</p>
-                <p class="text-2xl font-bold">{{ dashboard.booksRemaining }}</p>
+                <p class="text-2xl font-bold">{{ (dashboard.loading || dashboard.error) ? '—' : dashboard.booksRemaining }}</p>
               </div>
             </div>
             

@@ -1,69 +1,60 @@
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, effectScope } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getFirestore, doc, getDoc } from 'firebase/firestore'
+import { getMe } from '@/api/auth'
+import { computeQuota } from '@/utils/quota'
 
+export type QuotaStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+// Shared singleton state — the quota widget appears in several places (header,
+// create page, profile) and should present one consistent value.
+const status = ref<QuotaStatus>('idle')
+const errorMessage = ref<string | null>(null)
+const booksLimitRef = ref(0)
 const booksRemainingRef = ref(0)
 const isAtLimitRef = ref(false)
-const booksLimitRef = ref(1)
-const loading = ref(false)
-const error = ref<string | null>(null)
+
+let inFlight = false
+let watcherStarted = false
+// Detached scope so the driving watcher survives individual component unmounts.
+const scope = effectScope(true)
 
 export function useBookQuota() {
   const authStore = useAuthStore()
-  const db = getFirestore()
+
+  const isLoading = computed(() => status.value === 'loading')
+  const isError = computed(() => status.value === 'error')
+  const isReady = computed(() => status.value === 'ready')
+  // Backward-compatible alias for existing consumers that destructured `loading`.
+  const loading = isLoading
 
   const booksRemaining = computed(() => booksRemainingRef.value)
   const isAtLimit = computed(() => isAtLimitRef.value)
   const booksLimit = computed(() => booksLimitRef.value)
   const booksUsed = computed(() => Math.max(0, booksLimitRef.value - booksRemainingRef.value))
-  const percentUsed = computed(() => booksLimitRef.value > 0 ? Math.round((booksUsed.value / booksLimitRef.value) * 100) : 100)
+  const percentUsed = computed(() =>
+    booksLimitRef.value > 0 ? Math.round((booksUsed.value / booksLimitRef.value) * 100) : 0,
+  )
 
   async function fetchQuota() {
-    if (!authStore.uid) return
-    loading.value = true
-    error.value = null
+    if (!authStore.uid || inFlight) return
+    inFlight = true
+    status.value = 'loading'
+    errorMessage.value = null
     try {
-      const userSnap = await getDoc(doc(db, 'users', authStore.uid))
-      if (userSnap.exists()) {
-        const u = userSnap.data()
-        
-        const tier = u.subscription_tier ?? 'free'
-        const active = u.subscription_active ?? false
-        const otc = u.one_time_credits ?? 0
-        const total = u.books_generated_total ?? 0
-        const thisMonth = u.books_generated_this_month ?? 0
-        
-        let limit = 1
-        let remaining = Math.max(0, 1 - total)
-        
-        if (tier === 'teacher' && active) {
-          limit = 25
-          remaining = Math.max(0, 25 - thisMonth)
-        } else if (tier === 'family' && active) {
-          limit = 12
-          remaining = Math.max(0, 12 - thisMonth)
-        } else if (otc > 0) {
-          limit = otc
-          remaining = otc
-        }
-
-        booksLimitRef.value = limit
-        booksRemainingRef.value = remaining
-        isAtLimitRef.value = remaining <= 0
-      } else {
-        // Fallback for missing user doc
-        booksLimitRef.value = 1
-        booksRemainingRef.value = 1
-        isAtLimitRef.value = false
-      }
+      const q = computeQuota(await getMe())
+      booksLimitRef.value = q.limit
+      booksRemainingRef.value = q.remaining
+      isAtLimitRef.value = q.isAtLimit
+      status.value = 'ready'
     } catch (err) {
+      // NO fail-to-zero fallback. On failure we surface an explicit error state
+      // and deliberately do NOT write numbers that would render as a valid-
+      // looking "0 used" — consumers must show the error/loading state instead.
       console.error('Failed to fetch quota', err)
-      error.value = 'Could not load quota'
-      booksLimitRef.value = 1
-      booksRemainingRef.value = 1
-      isAtLimitRef.value = false
+      errorMessage.value = 'Unable to load usage'
+      status.value = 'error'
     } finally {
-      loading.value = false
+      inFlight = false
     }
   }
 
@@ -76,21 +67,49 @@ export function useBookQuota() {
     }
   }
 
-  onMounted(() => {
-    if (authStore.isAuthenticated) {
-      fetchQuota()
-    }
-  })
+  // Register exactly one driving watcher. Fetch once a user is present and
+  // re-fetch whenever the signed-in user changes (login after mount, account
+  // switch, logout→login) — replacing the old one-shot onMounted that only ran
+  // if the user happened to already be authenticated at mount time.
+  if (!watcherStarted) {
+    watcherStarted = true
+    scope.run(() => {
+      watch(
+        () => authStore.uid,
+        (uid) => {
+          if (uid) {
+            fetchQuota()
+          } else {
+            // Signed out — reset to idle, don't leave stale numbers around.
+            status.value = 'idle'
+            errorMessage.value = null
+            booksLimitRef.value = 0
+            booksRemainingRef.value = 0
+            isAtLimitRef.value = false
+          }
+        },
+        { immediate: true },
+      )
+    })
+  }
 
   return {
+    // status
+    status,
+    isLoading,
     loading,
-    error,
+    isError,
+    isReady,
+    errorMessage,
+    // values (only meaningful when isReady)
     booksUsed,
     booksRemaining,
     isAtLimit,
     booksLimit,
     percentUsed,
+    // actions
     fetchQuota,
-    decrementRemaining
+    refresh: fetchQuota,
+    decrementRemaining,
   }
 }
