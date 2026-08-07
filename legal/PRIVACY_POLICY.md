@@ -55,8 +55,6 @@ To generate a book, the story or theme you provide — and, where relevant, the 
 
 These providers act as **service providers processing data on our behalf** to deliver the Service you requested. Under our agreements and their terms, this data is used only to provide the generation service and is **not used to train their AI models** or for their own independent purposes. Generated images and finished PDFs are stored on **Cloudflare R2** so you can access and download your books.
 
-> **[DECISION — verify before launch]** Confirm that your fal.ai plan/terms contractually prevent use of submitted data for model training, matching the Anthropic API's no-training-on-inputs default. If either provider's terms do not guarantee this, update this section accordingly.
-
 ## 6. How we share information
 
 We share information only in these circumstances:
