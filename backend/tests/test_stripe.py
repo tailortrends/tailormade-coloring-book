@@ -115,7 +115,63 @@ def test_checkout_rejects_unknown_price_id():
     )
 
     assert response.status_code == 400
+
+
+# ── Mode-aware price IDs ──────────────────────────────────────────────────────
+
+def test_allowed_price_ids_follow_active_mode(monkeypatch):
+    """The allow-list must reflect the currently active mode: a live-mode price is
+    not accepted while in test mode, and vice versa."""
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_family_price_id", "price_test_fam")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_teacher_price_id", "price_test_teach")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_single_price_id", "price_test_single")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_live_family_price_id", "price_live_fam")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_live_teacher_price_id", "price_live_teach")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_live_single_price_id", "price_live_single")
+
+    monkeypatch.setattr(stripe_mod, "_get_stripe_mode", lambda: "test")
+    allowed_test = stripe_mod._allowed_price_ids()
+    assert "price_test_fam" in allowed_test
+    assert "price_live_fam" not in allowed_test
+    assert stripe_mod._price_id_to_tier()["price_test_single"] == "single"
+
+    monkeypatch.setattr(stripe_mod, "_get_stripe_mode", lambda: "live")
+    allowed_live = stripe_mod._allowed_price_ids()
+    assert "price_live_fam" in allowed_live
+    assert "price_test_fam" not in allowed_live
+
+
+def test_checkout_rejects_inactive_mode_price(monkeypatch):
+    """Submitting a price ID that belongs to the INACTIVE mode is a 400."""
+    monkeypatch.setattr(stripe_mod, "_get_stripe_mode", lambda: "test")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_family_price_id", "price_test_fam")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_live_family_price_id", "price_live_fam")
+
+    response = client.post(
+        "/api/v1/stripe/checkout",
+        json={"price_id": "price_live_fam"},  # live price while mode is test
+        headers=AUTH_HEADER,
+    )
+    assert response.status_code == 400
     assert response.json()["detail"] == "Invalid price selection"
+
+
+def test_config_returns_active_mode_price_ids(monkeypatch):
+    """GET /config exposes the active mode's price IDs for the frontend."""
+    monkeypatch.setattr(stripe_mod, "_get_stripe_mode", lambda: "test")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_family_price_id", "price_test_fam")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_teacher_price_id", "price_test_teach")
+    monkeypatch.setattr(stripe_mod.settings, "stripe_test_single_price_id", "price_test_single")
+
+    response = client.get("/api/v1/stripe/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "test"
+    assert body["price_ids"] == {
+        "family": "price_test_fam",
+        "teacher": "price_test_teach",
+        "single": "price_test_single",
+    }
 
 
 # ── Test 2: Webhook rejects invalid signature ────────────────────────────────

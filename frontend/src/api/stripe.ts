@@ -8,6 +8,25 @@ interface PortalResponse {
   portal_url: string
 }
 
+export interface StripeConfig {
+  publishable_key: string
+  mode: string
+  price_ids: {
+    family: string
+    teacher: string
+    single: string
+  }
+}
+
+/**
+ * Fetch the active Stripe config (publishable key, mode, and the price IDs for
+ * that mode). The frontend reads price IDs from here instead of hardcoding
+ * VITE_STRIPE_*_PRICE_ID, so they always match the backend's active mode.
+ */
+export async function getStripeConfig(): Promise<StripeConfig> {
+  return api.get<StripeConfig>('/api/v1/stripe/config')
+}
+
 export async function createCheckoutSession(
   priceId: string,
   successUrl: string,

@@ -20,16 +20,46 @@ router = APIRouter(prefix="/api/v1/stripe", tags=["stripe"])
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-PRICE_ID_TO_TIER = {
-    price_id: tier
-    for price_id, tier in (
-        (settings.stripe_family_price_id, "family"),
-        (settings.stripe_teacher_price_id, "teacher"),
-        (settings.stripe_single_price_id, "single"),
-    )
-    if price_id
-}
-ALLOWED_PRICE_IDS = set(PRICE_ID_TO_TIER)
+def _price_ids_for_mode(mode: str) -> dict[str, str]:
+    """Return {tier: price_id} for the given Stripe mode.
+
+    Prefers the mode-specific env vars; falls back to the legacy mode-agnostic
+    price IDs when the mode-specific ones are unset. Empty values are dropped.
+    """
+    if mode == "live":
+        family = settings.stripe_live_family_price_id or settings.stripe_family_price_id
+        teacher = settings.stripe_live_teacher_price_id or settings.stripe_teacher_price_id
+        single = settings.stripe_live_single_price_id or settings.stripe_single_price_id
+    else:
+        family = settings.stripe_test_family_price_id or settings.stripe_family_price_id
+        teacher = settings.stripe_test_teacher_price_id or settings.stripe_teacher_price_id
+        single = settings.stripe_test_single_price_id or settings.stripe_single_price_id
+    return {
+        tier: pid
+        for tier, pid in (("family", family), ("teacher", teacher), ("single", single))
+        if pid
+    }
+
+
+def _price_id_to_tier() -> dict[str, str]:
+    """{price_id: tier} for the currently ACTIVE mode. Used to validate and route
+    checkout requests, so a price from the inactive mode is rejected."""
+    return {pid: tier for tier, pid in _price_ids_for_mode(_get_stripe_mode()).items()}
+
+
+def _allowed_price_ids() -> set[str]:
+    """Price IDs accepted for checkout under the currently active mode."""
+    return set(_price_id_to_tier())
+
+
+def _all_price_id_to_tier() -> dict[str, str]:
+    """{price_id: tier} across BOTH modes (+ legacy). Used by webhook handlers so an
+    incoming subscription/price maps to a tier regardless of which mode created it."""
+    merged: dict[str, str] = {}
+    for mode in ("test", "live"):
+        for tier, pid in _price_ids_for_mode(mode).items():
+            merged[pid] = tier
+    return merged
 
 
 def _get_stripe_mode() -> str:
@@ -114,11 +144,21 @@ class PortalResponse(BaseModel):
 
 @router.get("/config")
 async def get_stripe_config():
-    """Return publishable key and mode for the frontend (no auth needed)."""
+    """Return the publishable key, active mode, and the price IDs for that mode
+    (no auth needed). The frontend reads price IDs from here instead of hardcoding
+    VITE_STRIPE_*_PRICE_ID at build time, since the active mode is resolved at
+    runtime (and is Firestore-overridable)."""
     _, publishable_key = _get_stripe_keys()
+    mode = _get_stripe_mode()
+    price_ids = _price_ids_for_mode(mode)
     return {
         "publishable_key": publishable_key,
-        "mode": _get_stripe_mode(),
+        "mode": mode,
+        "price_ids": {
+            "family": price_ids.get("family", ""),
+            "teacher": price_ids.get("teacher", ""),
+            "single": price_ids.get("single", ""),
+        },
     }
 
 
@@ -129,14 +169,14 @@ async def create_checkout_session(
     user: dict = Depends(get_current_user),
 ):
     """Create a Stripe Checkout Session and return the URL."""
-    if body.price_id not in ALLOWED_PRICE_IDS:
+    if body.price_id not in _allowed_price_ids():
         raise HTTPException(status_code=400, detail="Invalid price selection")
 
     s = _get_stripe()
     loop = asyncio.get_event_loop()
 
     customer_id = await _find_or_create_customer(user["email"], user["uid"])
-    selected_tier = PRICE_ID_TO_TIER[body.price_id]
+    selected_tier = _price_id_to_tier()[body.price_id]
     is_subscription = selected_tier in ("family", "teacher")
 
     session_params = {
@@ -345,9 +385,10 @@ async def _handle_checkout_completed(session: dict) -> None:
             None, lambda: s.Subscription.retrieve(subscription_id)
         )
         price_id = sub["items"]["data"][0]["price"]["id"] if sub["items"]["data"] else None
-        if price_id not in PRICE_ID_TO_TIER:
+        tier_map = _all_price_id_to_tier()
+        if price_id not in tier_map:
             raise RuntimeError(f"Unrecognized subscription price ID: {price_id}")
-        tier = PRICE_ID_TO_TIER[price_id]
+        tier = tier_map[price_id]
 
         await update_user_stripe(
             uid,
@@ -371,7 +412,7 @@ async def _handle_checkout_completed(session: dict) -> None:
 
     elif mode == "payment":
         price_id = session.get("metadata", {}).get("price_id")
-        if price_id != settings.stripe_single_price_id:
+        if _all_price_id_to_tier().get(price_id) != "single":
             raise RuntimeError(f"One-time payment used invalid price ID: {price_id}")
 
         from firebase_admin import firestore as fs
@@ -418,9 +459,10 @@ async def _handle_subscription_updated(subscription: dict) -> None:
         if subscription.get("items", {}).get("data")
         else None
     )
-    if price_id not in PRICE_ID_TO_TIER:
+    tier_map = _all_price_id_to_tier()
+    if price_id not in tier_map:
         raise RuntimeError(f"Unrecognized subscription price ID: {price_id}")
-    tier = PRICE_ID_TO_TIER[price_id]
+    tier = tier_map[price_id]
     status = subscription.get("status")
     active = status in ("active", "trialing")
 

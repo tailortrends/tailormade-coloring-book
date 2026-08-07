@@ -54,3 +54,5 @@ screenshots/
 *.njsproj
 *.sln
 *.sw?
+.worktrees/
+tailormade-coloring-book-f6eee122092f.json

@@ -62,9 +62,20 @@ class Settings(BaseSettings):
     stripe_test_secret_key: str = ""
     stripe_test_publishable_key: str = ""
     stripe_webhook_secret: str = ""
+    # Legacy, mode-agnostic price IDs. Kept as a fallback when the mode-specific
+    # IDs below are unset, so existing deployments keep working.
     stripe_family_price_id: str = ""
     stripe_teacher_price_id: str = ""
     stripe_single_price_id: str = ""
+    # Mode-specific price IDs (preferred). Selected by the active STRIPE_MODE the
+    # same way secret keys are — a live-mode price is never accepted while in test
+    # mode and vice versa.
+    stripe_live_family_price_id: str = ""
+    stripe_live_teacher_price_id: str = ""
+    stripe_live_single_price_id: str = ""
+    stripe_test_family_price_id: str = ""
+    stripe_test_teacher_price_id: str = ""
+    stripe_test_single_price_id: str = ""
     stripe_portal_return_url: str = ""
 
     # Sentry
